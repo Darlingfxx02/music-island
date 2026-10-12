@@ -24,6 +24,7 @@ import { VoiceSettingsView } from '../plugins/voice/VoiceSettingsView'
 import { TaskbarLayoutEditor } from './TaskbarLayoutEditor'
 import { IslandLayoutEditor } from './IslandLayoutEditor'
 import { getLegacyIslandLayout, withIslandLayout } from '../../shared/lib/islandLayout'
+import { getDictationAppearance } from '../../shared/lib/dictationAppearance'
 import { BrandLogo } from '../../shared/ui/BrandLogo'
 import { WarpSurface, WarpSurfaceProvider } from '../../shared/ui/WarpSurface'
 import { PreviewScale } from '../../shared/ui/PreviewScale'
@@ -66,7 +67,7 @@ import { AppLogo } from '../../shared/ui/AppLogo'
 import './settings.css'
 export { IslandPreview as AppearancePreview } from './IslandPreview'
 
-const APP_VERSION = '3.0.1'
+const APP_VERSION = '3.0.2'
 
 interface SettingsPanelProps {
   usage?: UsageController
@@ -360,7 +361,7 @@ export function SettingsPanel({
     setSourceError(null)
     try {
       if (draft.media.protocol !== 'smtc') setDirectStatus(await disableDirectYandex(true))
-      patchMedia({ protocol: 'smtc', directYandexPort: null, preferredSourceAppId })
+      patchMedia({ protocol: 'smtc', directYandexConsent: false, directYandexPort: null, preferredSourceAppId })
       if (preferredSourceAppId === 'spotify' && !spotifySession) await openSpotify()
     } catch {
       setSourceError(locale === 'ru' ? preferredSourceAppId === 'spotify' ? 'Не удалось открыть Spotify. Проверьте, что приложение установлено.' : 'Не удалось сменить источник. Попробуйте ещё раз.' : preferredSourceAppId === 'spotify' ? 'Could not open Spotify. Check that the app is installed.' : 'Could not switch source. Try again.')
@@ -505,7 +506,7 @@ export function SettingsPanel({
           const Icon = { general: Mic, models: Database, history: ClockCounterClockwise, dictionary: BookOpen, processing: TextAa, advanced: SlidersHorizontal }[id]
           return { id, label: dictationPages[id][locale === 'ru' ? 0 : 1], icon: (active: boolean) => <Icon size={20} weight={active ? 'fill' : 'regular'} /> }
         })} />
-        <div className="settings-content" data-settings-scroll><DictationSettings active={settingsVisible} reducedMotion={reducedMotion} controller={dictation} page={dictationPage} locale={locale} onPage={setDictationPage} onDisable={async () => { await dictation.disable(); previewAndSave({ ...draft, plugins: { ...draft.plugins, enabled: draft.plugins.enabled.filter((id) => id !== 'dictation') } }) }} onEnable={async () => {
+        <div className="settings-content" data-settings-scroll><DictationSettings appearance={getDictationAppearance(draft)} onAppearanceChange={dictationAppearance => previewAndSave(withUiPrefs(draft, { dictationAppearance }))} active={settingsVisible} reducedMotion={reducedMotion} controller={dictation} page={dictationPage} locale={locale} onPage={setDictationPage} onDisable={async () => { await dictation.disable(); previewAndSave({ ...draft, plugins: { ...draft.plugins, enabled: draft.plugins.enabled.filter((id) => id !== 'dictation') } }) }} onEnable={async () => {
           await dictation.enable()
           const enabled = [...new Set([...draft.plugins.enabled, 'dictation'])]
           previewAndSave({ ...draft, plugins: { ...draft.plugins, enabled } })

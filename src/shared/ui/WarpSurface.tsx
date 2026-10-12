@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import { createPortal } from 'react-dom'
 import { WarpMaterial, type WarpMaterialProps } from './WarpMaterial'
 
-type Options = Pick<WarpMaterialProps, 'speed' | 'reducedMotion' | 'fieldClassName' | 'variant' | 'frame' | 'maxPixelCount'>
+type Options = Pick<WarpMaterialProps, 'speed' | 'reducedMotion' | 'fieldClassName' | 'variant' | 'frame' | 'maxPixelCount' | 'deferUntilNearViewport'>
 type Slot = { node: HTMLDivElement; active: boolean; options: Options }
 const WarpContext = createContext<((slot: Slot) => () => void) | null>(null)
 
@@ -27,10 +27,10 @@ export function WarpSurfaceProvider({ children }: { children: ReactNode }) {
 }
 
 /** A slot inside Settings; standalone everywhere else, including motion exports. */
-export function WarpSurface({ active = true, speed, reducedMotion, fieldClassName, variant, frame, maxPixelCount, ...props }: WarpMaterialProps) {
+export function WarpSurface({ active = true, speed, reducedMotion, fieldClassName, variant, frame, maxPixelCount, deferUntilNearViewport, ...props }: WarpMaterialProps) {
   const register = useContext(WarpContext)
   const node = useRef<HTMLDivElement>(null)
-  const options = useMemo(() => ({ speed, reducedMotion, fieldClassName, variant, frame, maxPixelCount }), [speed, reducedMotion, fieldClassName, variant, frame, maxPixelCount])
+  const options = useMemo(() => ({ speed, reducedMotion, fieldClassName, variant, frame, maxPixelCount, deferUntilNearViewport }), [speed, reducedMotion, fieldClassName, variant, frame, maxPixelCount, deferUntilNearViewport])
   useLayoutEffect(() => {
     if (!register || !node.current) return
     return register({ node: node.current, active, options })

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useEffect, useState } from 'react'
-import { fn } from 'storybook/test'
+import { expect, fn, within } from 'storybook/test'
 import { OverlayShell } from '../../features/overlay/OverlayShell'
 import type { IslandAppState, OverlayMode } from '../../app/useIslandApp'
 import type { MediaSnapshot } from '../../shared/lib/types'
@@ -139,6 +139,11 @@ export const AssistantLimits: StoryObj<typeof meta> = { name: 'Лимиты Code
 export const Empty: StoryObj<typeof meta> = {
   name: 'Яндекс Музыка недоступна',
   args: { empty: true },
+  play: async ({ canvasElement }) => {
+    const button = await within(canvasElement).findByRole('button', { name: /Перезапустить Яндекс Музыку|Restart Yandex Music/ })
+    await expect(button).toBeEnabled()
+    await expect(button).toHaveClass('ui-button--primary')
+  },
 }
 export const Restarting: StoryObj<typeof meta> = {
   name: 'Перезапуск Яндекс Музыки',

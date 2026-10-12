@@ -1,11 +1,14 @@
 import type { AppConfig } from './types'
 import type { TaskbarLayoutV1 } from './taskbarLayout'
+import type { DictationAppearance } from './dictationAppearance'
 
 export const UI_PREFS_KEY = 'ui'
 
 export type SettingsColorScheme = 'dark' | 'light'
 
 export interface UiPrefs {
+  /** Recorder artwork only; native capture and overlay visibility remain independent. */
+  dictationAppearance?: DictationAppearance
   /** Ordered controls rendered in the native taskbar player. */
   taskbarLayout?: TaskbarLayoutV1
   /** Independent visual scale for quota satellites. */

@@ -33,17 +33,21 @@ dialog.dictation-confirm { position: fixed; inset: 0; padding: 0; width: min(456
 dialog.dictation-confirm:not([open]) { display: none; }
 dialog.dictation-confirm::backdrop { background: var(--overlay-scrim); }
 dialog.dictation-confirm > div { width: auto; box-shadow: none; }
-.dictation-overlay { width: max-content; max-width: calc(100vw - 8px); margin: 4px auto; color: var(--fg-primary); background: var(--surface-panel, #272727); border-radius: 22px; overflow: hidden; animation: dictation-arrive 180ms ease-out; }
-.dictation-overlay__bar { min-height: 40px; padding: 0 10px 0 15px; display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.dictation-overlay { width: 224px; max-width: calc(100vw - 8px); margin: 4px auto; color: var(--fg-primary); background: var(--surface-panel, #272727); border-radius: 22px; overflow: hidden; animation: dictation-arrive 320ms var(--ease-enter); transition: width 320ms var(--ease-standard), background-color 200ms ease; }
+.dictation-overlay__bar { min-height: 40px; box-sizing: border-box; padding: 0 8px 0 14px; display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.dictation-overlay__art { display: grid; place-items: center; flex-shrink: 0; }
+.dictation-overlay__label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dictation-overlay__bar button { flex-shrink: 0; }
 .dictation-overlay__bar button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
-.dictation-overlay__bar button:hover { background: #444; }
+.dictation-overlay__bar button:hover { background: var(--control-surface-hover); }
+.dictation-overlay__bar button:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
 .dictation-overlay__levels { height: 23px; display: flex; align-items: center; gap: 3px; }
 .dictation-overlay__levels i { width: 2px; border-radius: 2px; background: currentColor; transition: height 70ms linear; }
 .dictation-overlay__text { width: 350px; max-height: 57px; overflow: hidden; margin: 0; padding: 0 16px 13px; font-size: 13px; line-height: 1.5; }
 .dictation-overlay__text span { opacity: .5; }
 .dictation-overlay__spinner { animation: dictation-spin 1s linear infinite; }
 @keyframes dictation-spin { to { transform: rotate(360deg); } }
-@keyframes dictation-arrive { from { opacity: 0; transform: translateY(8px); } }
+@keyframes dictation-arrive { from { opacity: 0; transform: translateY(2px) scale(.96); } }
 .dictation-overlay[data-reduced-motion] { animation: none; }
 .dictation-overlay[data-reduced-motion] .dictation-overlay__spinner { animation: none; }
 .dictation-overlay[data-reduced-motion] .dictation-overlay__levels i { transition: none; }
@@ -65,17 +69,20 @@ dialog.dictation-confirm > div { width: auto; box-shadow: none; }
 .dictation-models__toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); margin-top: 0; }
 .dictation-models__filters { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
 .dictation-models__filters .ui-search { flex: 1 1 220px; min-width: 0; }
-.dictation-models__language { display: flex; align-items: center; gap: 10px; color: var(--fg-secondary); font-size: var(--text-caption); }
+.dictation-models__filters > .dark-select { flex: 0 0 var(--control-height); }
+.dictation-model { display: flex; flex-direction: column; gap: var(--space-4); min-height: 132px; box-sizing: border-box; }
 .dictation-models > h3 { margin-bottom: 2px; }
 .dictation-model__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
 .dictation-model__heading h3 { min-width: 0; overflow-wrap: anywhere; }
 .dictation-model__size { flex-shrink: 0; font-size: var(--text-caption); color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
-.dictation-model p.dictation-model__description { margin: 8px 0 0; font-size: var(--text-caption); }
-.dictation-model__badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: 14px; }
+.dictation-model p.dictation-model__description { margin: 0; font-size: var(--text-caption); }
+.dictation-model__footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-top: auto; }
+.dictation-model__details { flex: 1; min-width: 0; }
+.dictation-model__badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
 .dictation-model__loaded { color: var(--fg-muted); font-size: 11px; padding-inline: 4px; }
-.dictation-model__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-5); }
+.dictation-model__actions { display: flex; align-items: center; justify-content: flex-end; flex: 0 0 auto; gap: var(--space-2); }
 .dictation-model__delete { margin-left: auto; }
-.dictation-model__download { display: flex; align-items: center; flex: 1; min-width: 180px; gap: var(--space-2); color: var(--fg-secondary); font-size: var(--text-caption); }
+.dictation-model__download { display: flex; align-items: center; width: 180px; max-width: 100%; gap: var(--space-2); color: var(--fg-secondary); font-size: var(--text-caption); }
 .dictation-model__download progress { flex: 1; min-width: 50px; width: 100px; height: 4px; accent-color: var(--accent); }
 .dictation-model p.dictation-model__error { color: var(--status-danger); margin-bottom: 0; overflow-wrap: anywhere; }
 .dictation-dialog__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-6); }
@@ -83,13 +90,10 @@ dialog.dictation-confirm > div { width: auto; box-shadow: none; }
 .dictation-models__toolbar > h2 { margin: 0 auto 0 0; }
 .dictation-model__title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
 .dictation-model__title h3 { margin: 0; font-size: 15px; line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
-.dictation-model__title .status-chip { flex-shrink: 0; }
+.dictation-model__title .status-chip { max-width: 100%; white-space: normal; }
 .dictation-model__heading { gap: 12px; }
 .dictation-model__size { padding-top: 3px; white-space: nowrap; }
 .dictation-model__description { overflow-wrap: anywhere; }
-.dictation-model__actions .dictation-model__badges { margin-top: 0; }
-.dictation-model__actions { margin-top: var(--space-3); }
-.dictation-models__language { flex: 0 0 auto; }
 .dictation-preview__scene { position: relative; display: grid; place-items: center; min-height: 136px; padding: 24px; }
 .dictation-preview__scene .dictation-overlay { max-width: 100%; }
 .dictation-preview__scene .dictation-overlay__text { max-width: 100%; box-sizing: border-box; margin: 0; color: inherit; }
@@ -123,3 +127,100 @@ dialog.dictation-confirm > div { width: auto; box-shadow: none; }
 .dictation-preview__scene .dictation-overlay__levels i:nth-child(6) { --level-index: 5; }
 .dictation-preview__scene .dictation-overlay__levels i:nth-child(7) { --level-index: 6; }
 .dictation-preview__scene .dictation-overlay__levels i:nth-child(8) { --level-index: 7; }
+
+/* All artwork fits the existing 256 × 50 native compact window. */
+.dictation-overlay[data-theme='wave'], .dictation-overlay[data-theme='pixels'] { width: 164px; background: linear-gradient(165deg, var(--surface-raised), var(--surface-sunken)); }
+.dictation-overlay:is([data-phase='transcribing'], [data-phase='processing']) { width: 176px; }
+.dictation-overlay[data-phase='completed'] { width: 144px; }
+.dictation-overlay:is([data-phase='error'], [data-phase='cancelled']) { width: 248px; }
+.dictation-overlay:is([data-phase='error'], [data-phase='cancelled']) .dictation-overlay__art { color: var(--status-danger); }
+.dictation-overlay[data-phase='completed'] .dictation-overlay__art { color: var(--status-success); }
+.dictation-overlay[data-phase='completed'] .dictation-visual { --dictation-ink: var(--status-success) !important; }
+.dictation-overlay:is([data-phase='error'], [data-phase='cancelled']) .dictation-visual { --dictation-ink: var(--status-danger) !important; }
+.dictation-overlay[data-theme='pixels'][data-phase='completed'] { width: 180px; }
+.dictation-overlay:has(.dictation-overlay__text) { width: 390px; }
+.dictation-overlay__text { width: auto; }
+.dictation-overlay[data-theme='wave'] .dictation-overlay__art, .dictation-overlay[data-theme='pixels'] .dictation-overlay__art { flex: 1; }
+.dictation-overlay__sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.dictation-visual { display: block; flex-shrink: 0; width: 96px; height: 32px; color: var(--dictation-ink); fill: currentColor; opacity: var(--dictation-brightness); }
+.dictation-visual--pixels { width: 72px; }
+.dictation-pixel-expression { transition: opacity 140ms ease; }
+.dictation-visual--wave { width: 100px; }
+.dictation-visual--wave path { transition: stroke 200ms ease; }
+.dictation-wave-spinner { transform-origin: 50px 16px; animation: dictation-spin 1s linear infinite; }
+.dictation-overlay[data-theme='classic'][data-phase='transcribing'] { width: 200px; }
+.dictation-overlay[data-theme='classic'][data-phase='processing'] { width: 224px; }
+.dictation-visual__result { animation: dictation-result 240ms var(--ease-enter); transform-origin: center; transform-box: fill-box; }
+@keyframes dictation-result { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+.dictation-overlay[data-reduced-motion='true'], .dictation-overlay[data-reduced-motion='true'] * { animation: none !important; transition: none !important; }
+.dictation-theme-selection { min-width: 0; }
+.dictation-theme-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.dictation-theme-choice { position: relative; display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-4) var(--space-2); border-radius: var(--radius-md); background: var(--control-surface); cursor: pointer; transition: background var(--motion-fast) ease; }
+.dictation-theme-choice:hover { background: var(--control-surface-hover); }
+.dictation-theme-choice[data-selected='true'] { background: var(--surface-selected); }
+.dictation-theme-choice input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.dictation-theme-choice:has(input:focus-visible) { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.dictation-theme-choice__art { display: grid; place-items: center; height: 40px; width: 100%; color: var(--fg-primary); pointer-events: none; }
+.dictation-theme-choice__art .dictation-overlay__spinner { animation: none; }
+.dictation-theme-choice__art .dictation-visual { max-width: 100%; }
+.dictation-theme-choice__name { font-size: var(--text-caption); color: var(--fg-secondary); pointer-events: none; }
+.dictation-theme-choice[data-selected='true'] .dictation-theme-choice__name { color: var(--fg-primary); }
+.dictation-theme-choice__check { position: absolute; top: var(--space-2); right: var(--space-2); color: var(--fg-primary); pointer-events: none; }
+.dictation-theme-options { animation: dictation-options 180ms var(--ease-standard); }
+.dictation-theme-options__label { margin: var(--space-5) 0 var(--space-2); font-size: var(--text-label); line-height: var(--leading-label); font-weight: var(--weight-medium); }
+.dictation-theme-options .ui-color-swatches { margin-bottom: var(--space-2); }
+@keyframes dictation-options { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .dictation-overlay, .dictation-overlay *, .dictation-theme-choice, .dictation-theme-options { animation: none !important; transition: none !important; } }
+[data-reduced-motion='true'] .dictation-theme-choice, [data-reduced-motion='true'] .dictation-theme-options { animation: none; transition: none; }
+@media (forced-colors: active) { .dictation-theme-choice[data-selected='true'] { outline: 2px solid Highlight; } .dictation-theme-choice__check { color: Highlight; } .dictation-visual { color: CanvasText; opacity: 1; } }
+
+/* Cloud uses the reference's optical material and detached control composition,
+   scaled together to fit the existing 50px native recorder surface. */
+.dictation-overlay.dictation-overlay--cloud {
+  position: relative; width: 92px; height: 50px; margin: 0 auto; background: transparent;
+  border-radius: 0; overflow: visible; isolation: isolate;
+  animation: dictation-cloud-arrive 320ms ease;
+  transition: width 520ms cubic-bezier(.2,.78,.22,1), height 520ms cubic-bezier(.2,.78,.22,1);
+}
+@keyframes dictation-cloud-arrive { from { opacity: 0; } }
+.dictation-overlay--cloud:is([data-phase='recording'],[data-phase='streaming']) { width: 92px; }
+.dictation-overlay.dictation-overlay--cloud:is([data-phase='preparing'],[data-phase='transcribing'],[data-phase='processing'],[data-phase='completed'],[data-phase='cancelled'],[data-phase='error']) { width: 92px; }
+.dictation-overlay--cloud .dictation-cloud-surface { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.dictation-cloud__bar { position: relative; display: flex; align-items: center; justify-content: center; height: 50px; }
+.dictation-cloud__bar button {
+  display: grid; place-items: center; padding: 0; border: 0; background: transparent;
+  color: #ececf3; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.dictation-cloud__bar button:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.dictation-cloud__core {
+  position: relative; display: grid; place-items: center; flex-shrink: 0; width: 84px; height: 44px; border-radius: 24px;
+  margin-right: 0; transition: margin-right 520ms cubic-bezier(.2,.78,.22,1), transform 180ms ease;
+}
+.dictation-cloud__interaction { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+.dictation-overlay--cloud[data-recording-control='true']:is([data-phase='recording'],[data-phase='streaming']) { width: 132px; }
+.dictation-overlay--cloud[data-recording-control='true']:is([data-phase='recording'],[data-phase='streaming']) .dictation-cloud__core { margin-right: 40px; }
+.dictation-cloud__core:has(button):active { transform: scale(.97); }
+.dictation-cloud__satellite {
+  position: absolute; bottom: 9px; width: 32px; height: 32px; border-radius: 50%;
+  opacity: 0; transform: scale(.7); pointer-events: none;
+  transition: opacity 200ms ease, transform 380ms cubic-bezier(.2,.78,.22,1);
+}
+.dictation-cloud__satellite--left { left: 4px; }
+.dictation-cloud__satellite--right { right: 4px; }
+.dictation-overlay--cloud:is([data-phase='recording'],[data-phase='streaming']) .dictation-cloud__satellite { opacity: 1; transform: scale(1); pointer-events: auto; }
+.dictation-cloud__satellite:hover { color: #fff; }
+.dictation-cloud__copy { position: absolute; right: -38px; bottom: 9px; width: 32px; height: 32px; border-radius: 50%; background: #101014 !important; }
+.dictation-cloud__fallback { display: none; }
+.dictation-overlay--cloud:has([data-fallback='true']) .dictation-cloud__core { background: #0b0b0e; box-shadow: inset 0 0 0 1px #ffffff19; }
+.dictation-overlay--cloud:has([data-fallback='true']) .dictation-cloud__fallback { display: block; }
+.dictation-overlay--cloud:has([data-fallback='true']) .dictation-cloud__satellite { background: #0b0b0e; }
+.dictation-overlay--cloud .dictation-visual--pixels { width: 58px; height: 38px; filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 30%, transparent)); }
+.dictation-overlay--cloud .dictation-visual__result { animation: none; }
+.dictation-visual--pixels { transition: color 200ms ease; }
+.dictation-overlay.dictation-overlay--cloud[data-expanded='true'] { width: 390px; height: auto; min-height: 82px; }
+.dictation-overlay--cloud[data-expanded='true'] .dictation-overlay__text { position: relative; padding: 14px 20px 0; max-height: 54px; color: #e0e0e8; }
+.dictation-overlay--cloud[data-expanded='true'] .dictation-cloud__satellite--left { left: 16px; }
+.dictation-overlay--cloud[data-expanded='true'] .dictation-cloud__satellite--right { right: 16px; }
+.dictation-cloud-surface { display: block; width: 100px; height: 50px; }
+.dictation-theme-choice__art { height: 50px; }
+.dictation-theme-choice__art .dictation-cloud-surface { position: static; max-width: 100%; }

@@ -4,8 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { DictationController } from '../../app/useIslandApp'
 import { DictationPreview } from './DictationPreview'
+import { defaultDictationAppearance, type DictationAppearance } from '../../shared/lib/dictationAppearance'
 
-vi.mock('framer-motion', () => ({ useReducedMotion: () => false }))
+vi.mock('framer-motion', async importOriginal => ({ ...await importOriginal<typeof import('framer-motion')>(), useReducedMotion: () => false }))
 vi.mock('../../shared/ui/WarpSurface', () => ({ WarpSurface: () => null }))
 
 it('cycles a compact preview without changing saved style, and stops with reduced motion', async () => {
@@ -36,4 +37,59 @@ it('cycles a compact preview without changing saved style, and stops with reduce
     await act(async () => root.render(<DictationPreview controller={{ ...controller, enabled: false }} locale="ru" active reducedMotion onEnable={async () => {}} />))
     expect(container.querySelector('.stateful-warp-surface')?.getAttribute('data-running')).toBe('false')
   } finally { await act(async () => root.unmount()); container.remove(); vi.useRealTimers() }
+})
+
+it('restarts the animation with the selected theme and color, then cancels work when inactive', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  vi.useFakeTimers()
+  const raf = vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(42)
+  const cancelFrame = vi.spyOn(globalThis, 'cancelAnimationFrame')
+  const container = document.createElement('div'), root = createRoot(container)
+  const controller = { enabled: true, busy: null } as DictationController
+  const render = (theme: 'classic' | 'pixels' | 'wave', palette: DictationAppearance['palette'] = 'accent', active = true) => <DictationPreview controller={controller} locale="ru" active={active} reducedMotion={false} appearance={{ ...defaultDictationAppearance, theme, palette }} onEnable={async () => {}} />
+  try {
+    await act(async () => root.render(render('classic')))
+    await act(async () => vi.advanceTimersByTime(4200))
+    expect(container.querySelector('.dictation-preview__scene')?.getAttribute('data-phase')).toBe('transcribing')
+    await act(async () => root.render(render('pixels')))
+    expect(container.querySelector('.dictation-preview__scene')?.getAttribute('data-phase')).toBe('recording')
+    expect(container.querySelector('[data-character="fox"]')).not.toBeNull()
+    await act(async () => vi.advanceTimersByTime(4200))
+    await act(async () => root.render(render('pixels', 'ember')))
+    expect(container.querySelector('.dictation-preview__scene')?.getAttribute('data-phase')).toBe('recording')
+    expect(container.querySelector('.dictation-pixel-ears')).not.toBeNull()
+    await act(async () => root.render(render('wave')))
+    expect(container.querySelector('.dictation-visual--wave')).not.toBeNull()
+    await act(async () => root.render(render('wave', 'accent', false)))
+    expect(vi.getTimerCount()).toBe(0)
+    expect(cancelFrame).toHaveBeenCalledWith(42)
+    const calls = raf.mock.calls.length
+    await act(async () => vi.advanceTimersByTime(20000))
+    expect(raf.mock.calls.length).toBe(calls)
+  } finally { await act(async () => root.unmount()); raf.mockRestore(); cancelFrame.mockRestore(); vi.useRealTimers() }
+})
+
+it('keeps the material and artwork mounted through phases, repeated recordings and color changes', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  vi.useFakeTimers()
+  const raf = vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(42)
+  const container = document.createElement('div'), root = createRoot(container)
+  const controller = { enabled: true, busy: null } as DictationController
+  const render = (palette: DictationAppearance['palette'] = 'ember') => <DictationPreview controller={controller} locale="ru" active reducedMotion={false} appearance={{ ...defaultDictationAppearance, theme: 'pixels', palette }} onEnable={async () => {}} />
+  try {
+    await act(async () => root.render(render()))
+    const material = container.querySelector('.dictation-cloud-surface')
+    const artwork = container.querySelector('[data-character="fox"]')
+    expect(material).not.toBeNull()
+    for (const duration of [4200, 1600, 1800]) {
+      await act(async () => vi.advanceTimersByTime(duration))
+      expect(container.querySelector('.dictation-cloud-surface')).toBe(material)
+      expect(container.querySelector('[data-character="fox"]')).toBe(artwork)
+    }
+    await act(async () => vi.advanceTimersByTime(4200))
+    await act(async () => root.render(render('prism')))
+    expect(container.querySelector('.dictation-preview__scene')?.getAttribute('data-phase')).toBe('recording')
+    expect(container.querySelector('.dictation-cloud-surface')).toBe(material)
+    expect(container.querySelector('[data-character="fox"]')).toBe(artwork)
+  } finally { await act(async () => root.unmount()); raf.mockRestore(); container.remove(); vi.useRealTimers() }
 })

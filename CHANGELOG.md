@@ -1,5 +1,35 @@
 # Changelog
 
+## 3.0.2 — 2026-10-12
+
+### Dictation appearance
+
+- Add Classic, Waves and Fox themes with an animated preview, continuous capsule transitions and the optical blur and glow adapted from No Type with the author's permission.
+- Add animated pixel fox ears and named color swatches, including White. Simplify theme settings and keep the theme picker directly below the preview.
+- Hide recording action buttons in hold-to-dictate mode; show one Finish action in toggle mode, including the Waves theme.
+- Replace the all-languages switch with a checkbox language filter, placing English and Russian first. Label recommendations with their target language and align model download actions in the card footer.
+
+### Reliability and usability
+
+- Keep consented Direct Yandex launches configured across reboots through existing Desktop, Start, taskbar and startup entries. Restore their original arguments on SMTC selection or full data cleanup, with crash-safe backups and validated client process IDs.
+
+- Adapt selected Handy fixes for cancellation after short recordings, shortcut validation and reset, missing models, empty recordings, filler cleanup and model-loading feedback. Upgrade the native transcription bridge to transcribe-cpp 0.2.4.
+- Keep the Windows overlay composition style stable when changing pointer hit-testing and set a transparent WebView2 background before startup to address first-hover white flashes.
+- Initialize the layered window's opacity and remove color-key hit-test masks so the expanded island can receive mouse input across its whole surface.
+- Hide console windows created by background native helpers.
+- Center the Direct Yandex Music recovery notice and use a large primary restart button. Improve shared menu keyboard and checkbox behavior.
+
+Existing settings remain compatible. Final verification and user acceptance are recorded in [release QA](docs/QA_DIRECT_LAUNCH_3_0_2.md).
+
+### Build size and persistence
+
+- Compress embedded native payloads losslessly and reuse verified cached DLLs without decompressing them again.
+- Verify voice library hashes and atomically replace complete resources and settings files.
+- Preserve newer settings, tracks and SMTC health events when startup reads finish late.
+- Cancel fox clip waits on unmount and recover transitions from playback errors.
+- Copy, flush and verify self-update replacements before switching the portable executable.
+- Remove unused Handy CLI code, disconnected host settings handlers, unused plugin dependencies and unused host library output formats. Preserve unchanged native bundle timestamps.
+
 ## 3.0.1 — 2026-10-06
 
 ### Dictation fixes

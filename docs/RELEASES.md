@@ -2,6 +2,23 @@
 
 Music Island ships as a **portable** `music-island.exe` under GPL-3.0-or-later. That remains the forever distribution model: users download or auto-update the same single file from GitHub Releases. There is no installer requirement.
 
+## 3.0.2 release
+
+The user accepted the final Windows candidate and authorized publication on
+2026-10-12. Publish the exact tested packet under `release/v3.0.2-direct-launch/`:
+`music-island.exe`, `SHA256.txt` and `THIRD_PARTY_NOTICES.md`, with the English
+body from `docs/releases/3.0.2-release-notes.md`. Generated files stay ignored.
+
+The executable is 76,391,936 bytes (72.85 MiB), SHA-256
+`d801d5b05b0ad61a843cc909818bd6c13813dcaabcd2244227bbfb73c550cc84`.
+Verification and user acceptance are recorded in
+[Direct launch release QA](QA_DIRECT_LAUNCH_3_0_2.md); the optimization review is
+in [build review](REVIEW_BUILD_3_0_2.md).
+
+The earlier `release/v3.0.2/`, `release/v3.0.2-input-fix/` and
+`release/v3.0.2-optimized/` packets are superseded. Do not publish them.
+Reuse the approved executable without rebuilding unless compiled inputs change.
+
 ## Manual release checklist
 
 1. Install prerequisites: Node.js, Rust, Microsoft C++ Build Tools and WebView2 runtime.

@@ -18,3 +18,8 @@ The production `VoiceControlCard` combines the compact fox, Start/Stop, monitori
 In manual gain mode, the reset button beside the percentage restores **100%**. It changes only microphone gain and saves the value; automatic gain, EQ and device selection remain as configured.
 
 Runtime models extract to `%APPDATA%\Music Island\voice\` on first use.
+The embedded library is compressed without changing its bytes. Extraction verifies
+SHA-256, repairs damaged files even when their length matches, rejects redirected
+folders, and replaces files only after a completed write. The shipped fox videos
+remain the original transparent VP9 pack. Closing the mascot cancels pending waits;
+media errors settle transitions without interrupting healthy clips.

@@ -701,10 +701,14 @@ async fn maybe_soft_recover_direct(
     let Some(config_state) = app.try_state::<crate::config::ConfigState>() else {
         return;
     };
-    if let Ok(mut current) = config_state.load() {
-        if current.media.direct_yandex_port != Some(port) {
-            current.media.direct_yandex_port = Some(port);
-            if let Ok(saved) = config_state.save(current) {
+    if let Ok(current) = config_state.load() {
+        if matches!(current.media.protocol, crate::config::MediaProtocol::YandexDirect)
+            && current.media.direct_yandex_consent && current.media.direct_yandex_port != Some(port) {
+            if let Ok(saved) = config_state.update_media(|media| {
+                if matches!(media.protocol, crate::config::MediaProtocol::YandexDirect) && media.direct_yandex_consent {
+                    media.direct_yandex_port = Some(port);
+                }
+            }) {
                 let _ = app.emit("config:changed", saved);
             }
         }

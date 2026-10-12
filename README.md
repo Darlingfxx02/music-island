@@ -2,7 +2,7 @@
 
 Control music from the top edge of your Windows desktop and type with your voice in the app you are using
 
-**3.0.1** · Windows 10/11 · [GPL-3.0-or-later](LICENSE) · local-first · no telemetry
+**3.0.2** · Windows 10/11 · [GPL-3.0-or-later](LICENSE) · local-first · no telemetry
 
 [**Download the latest published version**](https://github.com/redheadesign/music-island/releases/latest) · [Website](https://music-island.space/) · [What's new](CHANGELOG.md) · [Component workshop](docs/STORYBOOK.md)
 
@@ -18,7 +18,7 @@ Download `music-island.exe`, save it in a folder you want to keep and open it �
 
 Press your shortcut, speak and finish the recording. Recognition runs on your computer; the result is inserted into the active app and can be kept with its audio in History. Download speech recognition for your language in Settings → Dictation, reuse files from Handy and manage your dictionary and optionally use **AI processing** through a provider you configure. Regular dictation stays local; provider processing is off by default and uses a separate shortcut.
 
-Dictation is adapted from [Handy v0.9.7](https://github.com/cjpais/Handy/tree/v0.9.7), commit `05e0aedd2906f0d82722735f930465950c476b90` (CJ Pais, MIT). See [setup and storage](docs/DICTATION.md), the [adaptation and upgrade journal](docs/HANDY_ADAPTATIONS.md), and [third-party notices](THIRD_PARTY_NOTICES.md). Models have their own licenses. Downloaded files live under `%APPDATA%\Music Island\dictation\`; deleting the EXE does not remove them. Manage them in System → Data.
+Dictation is adapted from [Handy v0.9.7](https://github.com/cjpais/Handy/tree/v0.9.7), commit `05e0aedd2906f0d82722735f930465950c476b90` (CJ Pais, MIT), with selected 0.9.8 fixes and October 7 loading notices. See [setup and storage](docs/DICTATION.md), the [adaptation and upgrade journal](docs/HANDY_ADAPTATIONS.md), and [third-party notices](THIRD_PARTY_NOTICES.md). Models have their own licenses. Downloaded files live under `%APPDATA%\Music Island\dictation\`; deleting the EXE does not remove them. Manage them in System → Data.
 
 ![Music Island's live layout editor with a media player, assistant quota and a component tray](docs/media/v3/01-island.webp)
 
@@ -47,7 +47,7 @@ Graphite and light themes share the same controls, navigation and surfaces. A sh
 
 **Windows SMTC** is the default. Music Island follows the selected Windows media session; Spotify works through its desktop app, without a separate Spotify API login.
 
-**Direct Yandex Music** is an optional connection to the installed desktop client through a loopback-only CDP endpoint. Connect in Settings → Music source. The first connection may require restarting the client with your consent. This unofficial integration can change after a Yandex update; SMTC remains available as a separate choice. [Protocol details](docs/YANDEX_MUSIC_API.md).
+**Direct Yandex Music** is an optional connection to the installed desktop client through a local CDP endpoint. Connect in Settings → Music source. With your consent, Music Island configures existing per-user shortcuts and any existing autostart command for Direct launches; the first connection may require restarting the client. Switching to SMTC restores normal launches. The client executable stays unchanged. This unofficial integration can change after a Yandex update. [Protocol details](docs/YANDEX_MUSIC_API.md).
 
 **Assistant limits** are off by default and enabled separately. Codex runs the installed `codex.exe app-server` and relies on its existing login without reading its auth files. Claude reads the existing local Claude Code OAuth sign-in only after you enable it, then queries Anthropic directly without a Music Island proxy. Credentials are never returned to the interface or sent to Music Island servers. Stale or unavailable data is labelled rather than presented as a current limit. [Usage architecture](docs/USAGE.md).
 

@@ -1,3 +1,5 @@
+mod launch;
+
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -5,7 +7,7 @@ use std::{
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
     path::PathBuf,
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
         OnceLock, RwLock,
@@ -33,6 +35,20 @@ static EVALUATIONS: AtomicU64 = AtomicU64::new(0);
 static COMMANDS: AtomicU64 = AtomicU64::new(0);
 static RPC_RTT_TOTAL_MS: AtomicU64 = AtomicU64::new(0);
 static RPC_RTT_MAX_MS: AtomicU64 = AtomicU64::new(0);
+
+pub fn lifecycle_lock() -> &'static AsyncMutex<()> {
+    static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| AsyncMutex::new(()))
+}
+
+pub async fn reconcile_launch(enabled: bool) -> anyhow::Result<()> {
+    if let Err(error) = tauri::async_runtime::spawn_blocking(move || launch::reconcile(enabled)).await? {
+        set_status(DirectYandexStatus { state: DirectYandexState::Error,
+            message: format!("Could not restore or configure Yandex Music launches: {error:#}"), ..status() });
+        return Err(error);
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -207,6 +223,10 @@ fn last_soft_recover_at() -> &'static RwLock<Option<Instant>> {
 /// Soft recovery for long downtime: rediscover a debug-enabled client and reattach.
 /// Does **not** kill/relaunch Yandex Music — that stays behind explicit Quick reload / Settings.
 pub async fn try_soft_recover() -> Option<DirectYandexStatus> {
+    let _operation = lifecycle_lock().try_lock().ok()?;
+    if crate::media::active_provider() != MediaProvider::YandexDirect {
+        return None;
+    }
     let failures = PROBE_FAILURES.load(Ordering::Relaxed);
     if failures < SOFT_RECOVER_FAILURE_THRESHOLD {
         return None;
@@ -240,6 +260,12 @@ pub async fn try_soft_recover() -> Option<DirectYandexStatus> {
     crate::logging::append_event(&format!(
         "direct Yandex soft recover attempted after {failures} probe failures"
     ));
+
+    // An updater may replace shortcuts or the existing Run entry while the island is open.
+    if let Err(error) = reconcile_launch(true).await {
+        crate::logging::append_event(&format!("direct launch repair failed: {error:#}"));
+        return None;
+    }
 
     let Some((port, executable)) = find_running_debug_endpoint() else {
         if failures >= RESTART_REQUIRED_FAILURE_THRESHOLD
@@ -292,18 +318,25 @@ pub async fn try_soft_recover() -> Option<DirectYandexStatus> {
 }
 
 pub async fn enable() -> anyhow::Result<DirectYandexStatus> {
-    if let Some((port, executable)) = find_running_debug_endpoint() {
+    let existing = find_running_debug_endpoint();
+    let executable = existing.as_ref().map(|(_, path)| path.clone())
+        .or_else(find_executable)
+        .ok_or_else(|| anyhow::anyhow!("Yandex Music Desktop was not found"))?;
+    if let Some((port, executable)) = existing {
         match attach_existing(port, executable.clone()).await {
-            Ok(status) => return Ok(status),
+            Ok(status) => {
+                tauri::async_runtime::spawn_blocking(move || launch::prepare(&executable, Some(port))).await??;
+                return Ok(status);
+            }
             Err(error) => crate::logging::append_event(&format!(
                 "existing direct endpoint rejected before explicit restart: {error:#}"
             )),
         }
     }
 
-    let executable =
-        find_executable().ok_or_else(|| anyhow::anyhow!("Yandex Music Desktop was not found"))?;
-    let port = reserve_local_port()?;
+    let launch_executable = executable.clone();
+    let port = tauri::async_runtime::spawn_blocking(move || launch::prepare(&launch_executable, None)).await??;
+
     crate::logging::append_event(&format!(
         "direct Yandex enable requested: executable={}, port={port}",
         executable.display()
@@ -315,9 +348,9 @@ pub async fn enable() -> anyhow::Result<DirectYandexStatus> {
         executable_path: Some(executable.to_string_lossy().into_owned()),
     });
 
-    stop_client();
+    tauri::async_runtime::spawn_blocking(stop_client).await??;
     sleep(Duration::from_millis(600)).await;
-    Command::new(&executable)
+    crate::process::command(&executable)
         .arg(format!("--remote-debugging-port={port}"))
         .arg("--remote-debugging-address=127.0.0.1")
         .stdin(Stdio::null())
@@ -420,21 +453,20 @@ async fn attach_existing(port: u16, executable: PathBuf) -> anyhow::Result<Direc
 }
 
 pub async fn disable(restart_plain: bool) -> anyhow::Result<DirectYandexStatus> {
-    let executable = status()
-        .executable_path
-        .as_deref()
-        .map(PathBuf::from)
-        .or_else(find_executable);
+    // Restore the durable launch settings before dropping the connection or restarting.
+    reconcile_launch(false).await?;
+    let executable = find_executable();
+    let restart_plain = restart_plain && find_running_debug_endpoint().is_some();
     set_status(DirectYandexStatus::default());
     *actor_lock().lock().await = None;
     *metadata_lock()
         .write()
         .expect("Yandex metadata lock poisoned") = None;
     if restart_plain {
-        stop_client();
+        tauri::async_runtime::spawn_blocking(stop_client).await??;
         sleep(Duration::from_millis(500)).await;
         if let Some(executable) = executable {
-            Command::new(executable)
+            crate::process::command(executable)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -791,7 +823,13 @@ fn collapse_repeated_title(title: String) -> Option<String> {
 
 fn reserve_local_port() -> anyhow::Result<u16> {
     let listener = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))?;
-    Ok(listener.local_addr()?.port())
+    let port = listener.local_addr()?.port();
+    if port == u16::MAX {
+        // Electron rejects 65535; keep this socket reserved while allocating another port.
+        let retry = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))?;
+        return Ok(retry.local_addr()?.port());
+    }
+    Ok(port)
 }
 
 fn find_executable() -> Option<PathBuf> {
@@ -807,15 +845,15 @@ fn find_executable() -> Option<PathBuf> {
             .join("Yandex Music.exe"),
     ]
     .into_iter()
-    .find(|path| path.is_file())
+    .find(|path| path.is_file() && launch::plain_path(path).is_ok())
 }
 
 fn find_running_debug_endpoint() -> Option<(u16, PathBuf)> {
+    let installed = find_executable()?;
     let system = System::new_all();
     system.processes().values().find_map(|process| {
         let executable = process.exe()?.to_path_buf();
-        let name = executable.file_name()?.to_string_lossy().to_lowercase();
-        if !name.contains("yandex music") && !name.contains("яндекс музыка") {
+        if !same_installed_client(&executable, &installed) {
             return None;
         }
         let port = process.cmd().iter().find_map(|argument| {
@@ -824,27 +862,38 @@ fn find_running_debug_endpoint() -> Option<(u16, PathBuf)> {
                 .strip_prefix("--remote-debugging-port=")?
                 .parse::<u16>()
                 .ok()
-        })?;
+        }).filter(|port| (1024..u16::MAX).contains(port))?;
         Some((port, executable))
     })
 }
 
+fn same_installed_client(executable: &std::path::Path, installed: &std::path::Path) -> bool {
+    launch::same_path(executable, installed)
+}
+
 #[cfg(windows)]
-fn stop_client() {
-    let _ = Command::new("taskkill")
-        .args(["/F", "/T", "/IM", "Яндекс Музыка.exe"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    let _ = Command::new("taskkill")
-        .args(["/F", "/T", "/IM", "Yandex Music.exe"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+fn stop_client() -> anyhow::Result<()> {
+    let Some(installed) = find_executable() else { return Ok(()); };
+    let system = System::new_all();
+    for process in system.processes().values() {
+        if !process.exe().is_some_and(|exe| same_installed_client(exe, &installed))
+            || process.cmd().iter().any(|arg| arg.to_string_lossy().starts_with("--type=")) {
+            continue;
+        }
+        let pid = process.pid();
+        let result = crate::process::command("taskkill")
+            .args(["/F", "/T", "/PID", &pid.as_u32().to_string()])
+            .stdout(Stdio::null()).stderr(Stdio::null()).status()?;
+        if !result.success() && System::new_all().process(pid)
+            .and_then(|p| p.exe()).is_some_and(|exe| same_installed_client(exe, &installed)) {
+            anyhow::bail!("Could not stop the installed Yandex Music client");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(windows))]
-fn stop_client() {}
+fn stop_client() -> anyhow::Result<()> { Ok(()) }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1271,6 +1320,15 @@ mod tests {
         let port = reserve_local_port().expect("port");
         assert_ne!(port, 0);
         assert_ne!(port, 9_222);
+    }
+
+    #[test]
+    fn debug_discovery_only_accepts_the_installed_client_path() {
+        let installed = std::path::Path::new(r"C:\Users\Test\Programs\YandexMusic\Yandex Music.exe");
+        assert!(same_installed_client(installed, installed));
+        assert!(same_installed_client(std::path::Path::new(r"\\?\C:\Users\Test\Programs\YandexMusic\Yandex Music.exe"), installed));
+        assert!(!same_installed_client(std::path::Path::new(r"C:\Other\Yandex Music.exe"), installed));
+        assert!(!same_installed_client(std::path::Path::new(r"C:\Users\Test\Programs\YandexMusic\Fake Yandex Music.exe"), installed));
     }
 
     #[test]

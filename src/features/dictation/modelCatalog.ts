@@ -9,12 +9,24 @@ export function recommendationRank(model: ModelInfo, locale: 'ru' | 'en') {
   return /parakeet-unified-en-0\.6b.*Q8_0/i.test(model.id) ? 2 : model.is_recommended ? 1 : 0
 }
 
-export function groupModels(models: ModelInfo[], selected: string | undefined, query: string, allLanguages: boolean, locale: 'ru' | 'en' = 'ru') {
+export function catalogLanguages(models: ModelInfo[], locale: 'ru' | 'en') {
+  const names = new Intl.DisplayNames([locale], { type: 'language' })
+  const label = (code: string) => {
+    let text = code
+    try { text = names.of(code) ?? code } catch { /* Preserve unknown imported language codes. */ }
+    return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1)
+  }
+  const rest = [...new Set(models.flatMap(model => model.supported_languages))].filter(code => code !== 'en' && code !== 'ru')
+    .map(code => ({ code, label: label(code) })).sort((a, b) => a.label.localeCompare(b.label, locale))
+  return [...['en', 'ru'].map(code => ({ code, label: label(code) })), ...rest]
+}
+
+export function groupModels(models: ModelInfo[], selected: string | undefined, query: string, languages: readonly string[], locale: 'ru' | 'en' = 'ru') {
   const matches = (model: ModelInfo) => `${model.name} ${model.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   const installed = models.filter((model) => (model.is_downloaded || model.id === selected) && (model.id === selected || matches(model)))
     .sort((a, b) => Number(b.id === selected) - Number(a.id === selected) || recommendationRank(b, locale) - recommendationRank(a, locale) || a.name.localeCompare(b.name, locale))
   // Stable sort preserves the pinned native catalog's editorial order for ties.
-  const catalog = models.filter((model) => !model.is_downloaded && model.id !== selected && matches(model) && (allLanguages || model.supported_languages.includes(locale) || model.is_custom))
+  const catalog = models.filter((model) => !model.is_downloaded && model.id !== selected && matches(model) && (!languages.length || languages.some(language => model.supported_languages.includes(language)) || model.is_custom))
     .sort((a, b) => recommendationRank(b, locale) - recommendationRank(a, locale) || Number(b.is_recommended) - Number(a.is_recommended))
   return { installed, catalog }
 }

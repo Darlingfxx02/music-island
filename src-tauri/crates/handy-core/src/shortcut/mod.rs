@@ -9,6 +9,8 @@
 //! The active implementation is determined by the `keyboard_implementation`
 //! setting and can be changed at runtime.
 
+#[cfg(not(target_os = "linux"))]
+mod cancel_state;
 mod handler;
 pub mod handy_keys;
 pub mod tauri_impl;
@@ -16,6 +18,7 @@ pub mod tauri_impl;
 use log::{debug, error, info, warn};
 use serde::Serialize;
 use specta::Type;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -23,9 +26,8 @@ use crate::settings::APPLE_INTELLIGENCE_DEFAULT_MODEL_ID;
 use crate::settings::{
     self, get_settings, AutoSubmitKey, ClipboardHandling, KeyboardImplementation, LLMPrompt,
     OverlayPosition, OverlayStyle, PasteMethod, ShortcutActivation, ShortcutBinding, SoundTheme,
-    Theme, TypingTool, VadBackend, APPLE_INTELLIGENCE_PROVIDER_ID,
+    TypingTool, VadBackend, APPLE_INTELLIGENCE_PROVIDER_ID,
 };
-use crate::tray;
 
 // Note: Commands are accessed via shortcut::handy_keys:: in lib.rs
 
@@ -55,27 +57,101 @@ pub fn init_shortcuts(app: &AppHandle) {
     }
 }
 
+/// Whether the recording lifecycle currently wants the cancel shortcut.
+/// Written synchronously by start/stop, so it always holds the latest request.
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(not(target_os = "linux"))]
+struct CancelBinding {
+    backend: KeyboardImplementation,
+    binding: ShortcutBinding,
+}
+#[cfg(not(target_os = "linux"))]
+impl PartialEq for CancelBinding {
+    fn eq(&self, other: &Self) -> bool {
+        self.backend == other.backend
+            && self.binding.current_binding == other.binding.current_binding
+    }
+}
+#[cfg(not(target_os = "linux"))]
+static CANCEL_REGISTERED: cancel_state::CancelState<CancelBinding> =
+    cancel_state::CancelState::new();
+
 /// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
     // Track recording lifecycle independently of the current implementation so
     // switching implementations mid-recording cannot leave stale fallback state.
     crate::secure_input::register_cancel_fallback(app);
 
-    let settings = get_settings(app);
-    match settings.keyboard_implementation {
-        KeyboardImplementation::Tauri => tauri_impl::register_cancel_shortcut(app),
-        KeyboardImplementation::HandyKeys => handy_keys::register_cancel_shortcut(app),
-    }
+    CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+    schedule_cancel_reconcile(app);
 }
 
 /// Unregister the cancel shortcut (called when recording stops)
 pub fn unregister_cancel_shortcut(app: &AppHandle) {
     crate::secure_input::unregister_cancel_fallback(app);
 
-    let settings = get_settings(app);
-    match settings.keyboard_implementation {
-        KeyboardImplementation::Tauri => tauri_impl::unregister_cancel_shortcut(app),
-        KeyboardImplementation::HandyKeys => handy_keys::unregister_cancel_shortcut(app),
+    CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+    schedule_cancel_reconcile(app);
+}
+
+/// Apply the requested cancel state off the calling thread. Start and stop run
+/// on the shortcut handler thread, which must not block on registration, so the
+/// work is spawned. Spawned tasks may run in any order (a very short recording
+/// can see its unregister task run before its register task), so each pass
+/// applies the latest request instead of the action that scheduled it.
+fn schedule_cancel_reconcile(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        reconcile_cancel_shortcut(&app);
+    });
+}
+
+fn reconcile_cancel_shortcut(app: &AppHandle) {
+    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        return;
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let result = CANCEL_REGISTERED.reconcile(
+            || {
+                if !CANCEL_REQUESTED.load(Ordering::SeqCst) || !crate::is_enabled() {
+                    return None;
+                }
+                let settings = get_settings(app);
+                settings
+                    .bindings
+                    .get("cancel")
+                    .cloned()
+                    .map(|binding| CancelBinding {
+                        backend: settings.keyboard_implementation,
+                        binding,
+                    })
+            },
+            |old| match old.backend {
+                KeyboardImplementation::Tauri => {
+                    tauri_impl::unregister_shortcut(app, old.binding.clone())
+                }
+                KeyboardImplementation::HandyKeys => {
+                    handy_keys::unregister_shortcut(app, old.binding.clone())
+                }
+            },
+            |next| match next.backend {
+                KeyboardImplementation::Tauri => {
+                    tauri_impl::register_shortcut(app, next.binding.clone())
+                }
+                KeyboardImplementation::HandyKeys => {
+                    handy_keys::register_shortcut(app, next.binding.clone())
+                }
+            },
+        );
+        if let Err(error) = result {
+            error!("Failed to reconcile cancel shortcut: {}", error);
+        }
     }
 }
 
@@ -224,7 +300,7 @@ fn restore_registration(app: &AppHandle, binding: &ShortcutBinding) {
 #[tauri::command]
 #[specta::specta]
 pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, String> {
-    let binding = settings::get_stored_binding(&app, &id);
+    let binding = settings::get_stored_binding(&settings::get_settings(&app), &id)?;
     change_binding(app, id, binding.default_binding)
 }
 
@@ -341,6 +417,7 @@ pub fn change_keyboard_implementation_setting(
     if new_impl == KeyboardImplementation::HandyKeys && initialize_handy_keys_with_rollback(&app)? {
         // Shortcuts already registered during init.
         crate::secure_input::reconcile_fallback(&app);
+        schedule_cancel_reconcile(&app);
         return Ok(ImplementationChangeResult {
             success: true,
             reset_bindings: vec![],
@@ -350,6 +427,7 @@ pub fn change_keyboard_implementation_setting(
     // Register all shortcuts with new implementation, resetting invalid ones
     let reset_bindings = register_all_shortcuts_for_implementation(&app, new_impl);
     crate::secure_input::reconcile_fallback(&app);
+    schedule_cancel_reconcile(&app);
 
     // Emit event to notify frontend of the change
     let _ = app.emit(
@@ -586,52 +664,6 @@ pub fn change_sound_theme_setting(app: AppHandle, theme: String) -> Result<(), S
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_theme_setting(app: AppHandle, theme: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    let parsed = match theme.as_str() {
-        "system" => Theme::System,
-        "light" => Theme::Light,
-        "dark" => Theme::Dark,
-        other => {
-            warn!("Invalid theme '{}', defaulting to system", other);
-            Theme::System
-        }
-    };
-    settings.theme = parsed;
-    settings::write_settings(&app, settings);
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
-    apply_window_theme(&app, parsed);
-    // Notify other webviews (the recording overlay) so they re-apply the palette
-    // live — they set `data-theme` on their own document and can't see this one.
-    let _ = app.emit("theme-changed", parsed);
-    Ok(())
-}
-
-/// Applies the appearance setting to the native window chrome (title bar), which
-/// CSS `data-theme` cannot reach. `System` clears the override so the window
-/// follows the OS. Call this on startup and whenever the setting changes to keep
-/// the title bar in sync with the in-app palette.
-///
-/// On Windows this themes the title bar only. On macOS `set_theme` sets
-/// `NSApp.appearance` app-wide, which is what we want here: it darkens the title
-/// bar and keeps the overlay in step. Linux is left to `data-theme` alone, since
-/// its window theming is backend-dependent and unreliable.
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-pub fn apply_window_theme(app: &AppHandle, theme: Theme) {
-    let window_theme = match theme {
-        Theme::System => None,
-        Theme::Light => Some(tauri::Theme::Light),
-        Theme::Dark => Some(tauri::Theme::Dark),
-    };
-    if let Some(window) = app.get_webview_window("main") {
-        if let Err(e) = window.set_theme(window_theme) {
-            warn!("Failed to apply window theme: {}", e);
-        }
-    }
-}
-
-#[tauri::command]
-#[specta::specta]
 pub fn change_translate_to_english_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.translate_to_english = enabled;
@@ -716,114 +748,6 @@ pub fn change_debug_mode_setting(app: AppHandle, enabled: bool) -> Result<(), St
         serde_json::json!({
             "setting": "debug_mode",
             "value": enabled
-        }),
-    );
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_start_hidden_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.start_hidden = enabled;
-    settings::write_settings(&app, settings);
-
-    // Notify frontend
-    let _ = app.emit(
-        "settings-changed",
-        serde_json::json!({
-            "setting": "start_hidden",
-            "value": enabled
-        }),
-    );
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_autostart_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.autostart_enabled = enabled;
-    settings::write_settings(&app, settings);
-
-    // Apply the autostart setting immediately
-    crate::autostart::apply_autostart(&app, enabled);
-
-    // Notify frontend
-    let _ = app.emit(
-        "settings-changed",
-        serde_json::json!({
-            "setting": "autostart_enabled",
-            "value": enabled
-        }),
-    );
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_update_checks_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    if settings::update_checks_forced_disabled() {
-        return Err(
-            "Update checks are disabled by system configuration (HANDY_DISABLE_UPDATER)".into(),
-        );
-    }
-
-    let mut settings = settings::get_settings(&app);
-    settings.update_checks_enabled = enabled;
-    settings::write_settings(&app, settings);
-
-    let _ = app.emit(
-        "settings-changed",
-        serde_json::json!({
-            "setting": "update_checks_enabled",
-            "value": enabled
-        }),
-    );
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_show_whats_new_on_update_setting(
-    app: AppHandle,
-    enabled: bool,
-) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.show_whats_new_on_update = enabled;
-    settings::write_settings(&app, settings);
-
-    let _ = app.emit(
-        "settings-changed",
-        serde_json::json!({
-            "setting": "show_whats_new_on_update",
-            "value": enabled
-        }),
-    );
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_whats_new_last_seen_version_setting(
-    app: AppHandle,
-    version: String,
-) -> Result<(), String> {
-    let version = version.trim().to_string();
-    let mut settings = settings::get_settings(&app);
-    settings.whats_new_last_seen_version = version.clone();
-    settings::write_settings(&app, settings);
-
-    let _ = app.emit(
-        "settings-changed",
-        serde_json::json!({
-            "setting": "whats_new_last_seen_version",
-            "value": version
         }),
     );
 
@@ -1331,32 +1255,6 @@ pub fn change_filler_word_removal_enabled_setting(
     let mut settings = settings::get_settings(&app);
     settings.filler_word_removal_enabled = enabled;
     settings::write_settings(&app, settings);
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.app_language = language.clone();
-    settings::write_settings(&app, settings);
-
-    // Refresh the tray menu with the new language
-    tray::update_tray_menu(&app);
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn change_show_tray_icon_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.show_tray_icon = enabled;
-    settings::write_settings(&app, settings);
-
-    // Apply change immediately
-    tray::set_tray_visibility(&app, enabled);
-
     Ok(())
 }
 

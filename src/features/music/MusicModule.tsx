@@ -7,6 +7,7 @@ import type { Locale, MediaCommand, MediaSnapshot } from '../../shared/lib/types
 import { createTranslator, normalizeLocale } from '../../shared/i18n/messages'
 import { ProgressStrip } from './ProgressStrip'
 import { progressTrackKey, type ProgressNavigation } from './progressTransition'
+import { Button } from '../../shared/ui/SettingsControls'
 import './MusicModule.css'
 
 interface MusicModuleProps {
@@ -87,22 +88,22 @@ export function MusicModule({
     const restarting = isDirect && directReloadBusy
     const emptyTitle = restarting ? t('music.directRestarting') : isDirect ? t('music.directOffline') : t('music.noSession')
     return (
-      <section className="music-module music-module--empty" aria-label={emptyTitle} aria-busy={restarting || undefined}>
+      <section className={`music-module music-module--empty${isDirect ? ' music-module--direct-offline' : ''}`} aria-label={emptyTitle} aria-busy={restarting || undefined}>
         <span className="music-empty-icon" aria-hidden="true">{isDirect ? <Unplug size={22} /> : <Music2 size={22} />}</span>
         <div className="music-empty-copy">
           <strong>{emptyTitle}</strong>
           <span>{restarting ? t('music.directRestartingHint') : isDirect ? t('music.directOfflineHint') : t('music.noSessionHint')}</span>
         </div>
         {isDirect && onDirectReload ? (
-          <button
-            type="button"
+          <Button
+            variant="primary"
             className="direct-reload-button"
             disabled={directReloadBusy}
             onClick={() => onDirectReload()}
           >
-            <RotateCw size={14} aria-hidden="true" />
+            <RotateCw size={18} aria-hidden="true" />
             {directReloadBusy ? t('music.reloading') : t('music.quickReload')}
-          </button>
+          </Button>
         ) : null}
       </section>
     )

@@ -21,6 +21,12 @@
 - Spotify / browser / other SMTC sources.
 - SMTC seek: compare with Win+A flyout (player limitation is OK).
 - Direct Yandex: consent, connect, play/pause/seek/like, quick reload, return to SMTC.
+- Direct launch persistence: start from Desktop, Start and a pinned taskbar shortcut
+  after closing the client; reboot with Yandex autostart both enabled and disabled.
+  Existing autostart enablement must not change. Verify update-rewritten shortcuts
+  are repaired, then select SMTC and reopen each supported shortcut without debug flags.
+- Full data cleanup must restore owned Yandex launch settings before removing the
+  backup. A write-protected shortcut must retain a retryable backup and show failure.
 
 ## Better Voice (Beta)
 
@@ -41,11 +47,48 @@
 - Starts without Vite.
 - SmartScreen may warn on unsigned builds (documented, not a functional failure).
 
+## Windows console suppression
+
+- No console on manual launch, `--startup`, second launch or handoff to a newer
+  portable copy. Include a profile whose install record/Run key points to another
+  copy, so startup file-version probes actually run.
+- No console during Direct consent/connect, quick reload and return to SMTC.
+  Passive Direct recovery only reattaches; it must not restart the client.
+- No console during usage enable/Refresh/retry/five-minute polling or legacy
+  sidecar startup. Codex stdin/stdout IPC and sidecar log pipes still work.
+- Dictation's microphone privacy action opens the Windows Settings page directly.
+  Browser links, Spotify and opening the data folder also use native shell opening.
+- Autostart changes, portable replacement/relaunch and confirmed data cleanup do
+  not flash a terminal. Test updates/cleanup only with disposable copies/profiles.
+- VB-Cable INF installation keeps elevated `pnputil` hidden. The UAC prompt and
+  interactive official installer remain usable; verify install/cancel/uninstall
+  on a disposable Windows environment with an actual driver package.
+- Automated Windows tests in `process.rs` query the child's `GetConsoleWindow`
+  (must be zero) and verify exit status and stdin/stdout/stderr pipes. These cover
+  the shared launcher, not interactive UAC or external applications' behavior.
+
 ## Performance
 
 - Collapsed idle CPU ≤1% without voice.
 - Expanded Direct playback CPU ≤4%.
 - Hover latency acceptable; memory stable after 30–60 minutes.
+
+## Transparent overlay first hover
+
+- Cold manual launch and Windows autostart: after the island appears, hover it
+  for the first time. The desktop must never flash white or show a blank
+  monitor-sized overlay. Repeat after sleep/wake and display reconnect.
+- Repeat opening/closing, pinning and moving between the desktop and island
+  controls. Clicks outside the island pass through; controls inside work,
+  including settings and transport, without activating an invisible surface.
+- Sweep across the entire expanded card, especially its right half and the
+  Settings/Pin gutter: both hover feedback and clicks must reach the WebView.
+  Layered parent attributes must be alpha 255 with `LWA_ALPHA` only; no color key.
+- Repeat at Windows DPI 100/125/150/200% and with the preferred monitor changed.
+  Check the intro/onboarding separately from the main overlay.
+- Automated native tests verify persistent layered/input bits, initial opacity,
+  recovery from zero alpha/color key, and duplicate write suppression on a hidden HWND. They do not establish visible WebView2/DWM
+  behavior on the user's GPU; record that interactive result in SESSION_HANDOFF.md.
 
 ## Accessibility
 
@@ -58,6 +101,22 @@
 Browser verification covers scoped dark/light tokens, RU/EN, keyboard focus, reduced motion, fixed navigation/right-only scrolling, dialogs, import preview, 0/9/99/100/— quotas, and real preview drag at multiple scales. It does not establish native recording, paste, DPI or SMTC correctness.
 
 Native checks: run the isolated `--dictation-runtime-check` from an EXE-only folder without Handy or adjacent DLLs. Compare identical WAV/model/backend runs with Handy on the same hardware, recording cold load, recognition time and peak/private memory. Test RU/EN short/long recordings, hold/toggle/combined mode, Escape, input device removal/change, playback mute restoration, Better Voice concurrently, and focus-preserving paste into several editors (including closed target and clipboard recovery). Disabled dictation must retain neither an open microphone nor an ASR model. Hidden overlays must not animate.
+
+October 7 Handy fixes need these additional interactive Windows checks:
+
+- Classic/Waves/Fox: hold recording and live capture show no Stop/Cancel;
+  releasing the binding finishes. Toggle/combined show one working Finish.
+- Tap/release repeatedly, then use Escape in another app; the cancel binding
+  must not remain registered. Repeat with both keyboard backends and a switch.
+- In a disposable profile with no usable model, starting dictation must not
+  open the microphone. A cold live model load lasting over2s shows the loading
+  notice; completion/failure clears it and the next session starts compact.
+- With immediate unload selected, an empty or cancelled capture releases the
+  model as well as a successful capture. Repeating dictation still works.
+
+Recorded automated checks and the unperformed native interaction checks are
+tracked in SESSION_HANDOFF.md; Storybook cannot establish global hotkey/paste
+or microphone correctness.
 
 Verify download cancellation/resume, network loss, insufficient space, hash mismatch, corrupt model, import cancellation, unchanged original source, and full cleanup in a disposable profile with sentinel files outside each allowed root. Confirm no paths escape through symlinks/junctions. Never test full cleanup on a real profile.
 

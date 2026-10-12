@@ -5,6 +5,12 @@ processing pipeline of [Handy 0.9.7](https://github.com/cjpais/Handy/tree/v0.9.7
 commit `05e0aedd2906f0d82722735f930465950c476b90`. Recognition remains native Rust/C++.
 It does not launch Handy, install a service, create another tray icon or use its updater.
 
+Portable builds compress native libraries, feedback sounds, VAD and notices with
+lossless zlib. Extraction checks the original size and SHA-256 before atomically
+installing a file. Verified cached files are reused without decompression; CPU
+variants, Vulkan and all model families remain available. Build packaging uses
+Cargo's active C++ output, and unchanged bundle files keep their timestamps.
+
 ## Use
 
 Open **Settings → Dictation** and enable the feature. Choose a model that supports
@@ -27,6 +33,70 @@ streaming follow upstream capabilities. Unsupported model capabilities are not
 offered as working controls. History supports audio, retry, copying, keeping and
 deleting entries, and configurable retention. Cloud text processing starts disabled.
 Prompt templates use the literal `${output}` placeholder.
+
+## Recorder appearance
+
+Open **Settings → Dictation → General** to select Classic, Waves or Fox. Choices sit
+between the dictation preview and a separate Theme settings card, with no visible
+section heading or shared background. The radio group retains its accessible name.
+Colors use labeled circular swatches from the shared settings
+DS control, with native radio/keyboard behavior. The compact
+preview renders the same production component as the recording window, restarts
+its recording → recognition → done cycle after a theme/color/colored-edge change,
+and never starts audio capture. Classic remains the default for existing profiles.
+
+Waves use the source recorder's multilayer glow, soft energy limiter, diffuse
+material, refraction and full bevel. The central 84 × 44 capsule leaves generous
+horizontal space around the artwork in every phase; detached controls are 32 px.
+Recognition crossfades the wave into fluid particles; completion changes the material
+and indicator to green. The palette includes White; colored edges are
+adjustable. Wave brightness and material lighting use the fixed artwork defaults.
+
+Fox is the only pixel character, with tall, outward-tilted ears. Expressions and
+recognition games (Pong, Starship, Snake, Breakout) change automatically.
+Gaze, blinking, speech and expression gestures drive the ears together with the
+face. Games and delivery indicators have no ears. Voice visualization is always
+enabled; there are no expression, game, character, brightness or lighting controls.
+Older saved values for those removed options are ignored by normalization.
+During recording every theme has one Finish button in toggle/combined mode;
+hold-to-record has no recording buttons and finishes on key release. Fox and
+Waves use a 132 × 50 composition with Finish, or 92 × 50 for hold-to-record;
+recognition and results remain capsules at 92 × 50. There is no duplicate
+recording action on the artwork. Settings preview follows the saved shortcut mode.
+Existing cancellation shortcuts remain available.
+
+Cold model loading is distinct from recognition. Classic labels the wait after
+recording stops; live capture shows a loading notice after 2s, avoiding a flash on
+fast loads. The expanded live panel stays open for that recording.
+
+Artwork preferences live in the normal Music Island config under
+`plugins.settings.ui.dictationAppearance`. Switching themes preserves their
+options. The reused overlay window subscribes to config changes, including while
+hidden; a late initial config read cannot replace a newer theme. No new native
+commands or recording states are introduced. The finish control uses the existing
+native toggle command. Pointer down preserves the target editor's focus. The
+existing compact 256 × 50 and streaming 400 × 120 bounds, shortcuts, cancellation
+and copy fallback remain.
+
+Reduced motion produces a static preview. Inactive/hidden previews cancel their
+clock; hidden documents suspend artwork frames. Pixels use a local requestAnimationFrame
+clock; optical materials render directly into a small WebGL2 canvas at at most
+2× density. Speech uses a 25 ms attack / 120 ms release. The reference's .314 s
+critical springs crossfade waves/particles; its .32/.28 s quintic completion curve
+settles their rotation. Shell geometry uses the original 520 ms resize curve and
+subpixel DOM measurements. Fox phases crossfade in a fixed SVG coordinate system,
+with continuous bar heights. Preview cycles/colors preserve the canvas and clock
+instead of remounting them. Removed Spectrum preferences fall back to Accent.
+Each canvas releases its
+programs, framebuffers and textures on unmount, and handles context loss with a
+simple functional fallback. No additional runtime dependencies are needed.
+
+Visual/state references were studied in [No Type's customization](https://github.com/Darlingfxx02/no-tipe/blob/main/CrossPlatform/src/Customization.tsx),
+[pixel motion](https://github.com/Darlingfxx02/no-tipe/blob/main/CrossPlatform/src/recorder/motion.js)
+and [recorder lifecycle notes](https://github.com/Darlingfxx02/no-tipe/blob/main/CLOUD-RECORDER.md).
+The GLSL passes are adapted from the [approved cloud prototype](https://github.com/Darlingfxx02/no-tipe/blob/main/Prototypes/no-tipe-island-variants.html).
+Pixel artwork and fox gestures are implemented locally. Native ownership remains
+in Music Island's existing adapter.
 
 ## Storage and portability
 
@@ -120,6 +190,14 @@ own “On this computer” group. Downloaded, selected and loaded-in-memory are 
 states; an imported selected model remains visible even when a search/language
 filter would otherwise hide it. Selecting a model while disabled saves the choice
 without starting recognition. Activation is serialized against suspension/shutdown.
+
+The language filter beside model search uses a checkbox menu, with English and
+Russian first and the remaining catalog languages sorted by localized name.
+The initial selection follows the interface language. Multiple checked languages
+match models supporting any of them; clearing every check removes the filter.
+Installed/selected models remain discoverable. This catalog filter does not change
+the saved speech-recognition language. Recommendation badges name the model's
+recommended language independently of the interface locale.
 
 The local Russian catalog recommends GigaAM v3 E2E-RNN-T Q8 and labels GigaAM v3 CTC
 as an alternative. This is a UI recommendation, not an automatic model switch or a

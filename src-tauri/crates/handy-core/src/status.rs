@@ -10,6 +10,8 @@ pub struct Snapshot {
     pub ready: bool,
     pub text: String,
     pub error: Option<String>,
+    pub shortcut_activation: crate::settings::ShortcutActivation,
+    pub model_loading: bool,
     #[serde(skip)]
     streaming: bool,
 }
@@ -30,7 +32,9 @@ fn update(app: &AppHandle, f: impl FnOnce(&mut Snapshot)) {
     let _ = app.emit("dictation:status", snapshot);
 }
 pub fn begin(app: &AppHandle) {
+    let activation = crate::settings::get_settings(app).shortcut_activation;
     update(app, |s| {
+        s.shortcut_activation = activation;
         s.operation_id += 1;
         s.phase = "preparing".into();
         s.ready = false;
@@ -50,6 +54,9 @@ pub fn phase(app: &AppHandle, phase: &str) {
     update(app, |s| {
         s.phase = phase.into();
     });
+}
+pub fn model_loading(app: &AppHandle, loading: bool) {
+    update(app, |s| s.model_loading = loading);
 }
 pub fn ready(app: &AppHandle) {
     update(app, |s| {

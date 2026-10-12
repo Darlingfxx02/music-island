@@ -137,7 +137,7 @@ pub struct PrivacyConfig {
     pub write_detailed_logs: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaConfig {
     pub protocol: MediaProtocol,
@@ -275,17 +275,31 @@ impl ConfigState {
     }
 
     pub fn save(&self, config: AppConfig) -> anyhow::Result<AppConfig> {
+        self.save_to(config, &config_path()?)
+    }
+
+    pub fn update_media(&self, update: impl FnOnce(&mut MediaConfig)) -> anyhow::Result<AppConfig> {
+        self.update_media_to(update, &config_path()?)
+    }
+
+    fn update_media_to(&self, update: impl FnOnce(&mut MediaConfig), path: &std::path::Path) -> anyhow::Result<AppConfig> {
+        let mut current = self.config.write().map_err(|_| anyhow::anyhow!("config lock poisoned"))?;
+        let mut next = current.clone();
+        update(&mut next.media);
+        handy_core::embedded_assets::atomic_write(path, &serde_json::to_vec_pretty(&next)?)?;
+        *current = next.clone();
+        Ok(next)
+    }
+
+    fn save_to(&self, config: AppConfig, path: &std::path::Path) -> anyhow::Result<AppConfig> {
+        let mut current = self.config.write().map_err(|_| anyhow::anyhow!("config lock poisoned"))?;
         let mut normalized = config;
         normalized.schema_version = 2;
         normalized.layout.width = normalized.layout.width.clamp(80, 125);
         normalized.layout.scale = normalized.layout.scale.clamp(70, 120);
         normalized.taskbar.scale = sanitize_taskbar_scale(normalized.taskbar.scale);
-        let path = config_path()?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&path, serde_json::to_string_pretty(&normalized)?)?;
-        *self.config.write().expect("config lock poisoned") = normalized.clone();
+        handy_core::embedded_assets::atomic_write(path, &serde_json::to_vec_pretty(&normalized)?)?;
+        *current = normalized.clone();
         Ok(normalized)
     }
 }
@@ -312,6 +326,60 @@ fn load_from_disk() -> anyhow::Result<AppConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_media_update_preserves_current_non_media_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let state = ConfigState { config: Arc::new(RwLock::new(AppConfig::default())) };
+        let mut current = state.load().unwrap();
+        current.behavior.hover_delay_ms = 777;
+        state.save_to(current, &path).unwrap();
+        let saved = state.update_media_to(|media| {
+            media.protocol = MediaProtocol::YandexDirect;
+            media.direct_yandex_consent = true;
+            media.direct_yandex_port = Some(49200);
+        }, &path).unwrap();
+        assert_eq!(saved.behavior.hover_delay_ms, 777);
+        let disk: AppConfig = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(disk.media.direct_yandex_port, Some(49200));
+        state.update_media_to(|media| {
+            media.protocol = MediaProtocol::Smtc;
+            media.direct_yandex_consent = false;
+            media.direct_yandex_port = None;
+        }, &path).unwrap();
+        assert_eq!(state.load().unwrap().behavior.hover_delay_ms, 777);
+        assert!(!state.load().unwrap().media.direct_yandex_consent);
+    }
+
+    #[test]
+    fn overlapping_saves_keep_disk_and_memory_in_agreement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let state = ConfigState { config: Arc::new(RwLock::new(AppConfig::default())) };
+        std::thread::scope(|scope| {
+            for width in 80..100 {
+                let state = &state;
+                let path = &path;
+                scope.spawn(move || {
+                    let mut next = AppConfig::default(); next.layout.width = width;
+                    state.save_to(next, path).unwrap();
+                });
+            }
+        });
+        let disk: AppConfig = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(disk.layout.width, state.load().unwrap().layout.width);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_save_preserves_the_current_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = ConfigState { config: Arc::new(RwLock::new(AppConfig::default())) };
+        let mut next = state.load().unwrap(); next.layout.width = 125;
+        assert!(state.save_to(next, dir.path()).is_err());
+        assert_eq!(state.load().unwrap().layout.width, AppConfig::default().layout.width);
+    }
 
     #[test]
     fn older_configs_keep_the_taskbar_player_off() {

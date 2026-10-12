@@ -9,6 +9,8 @@ use tauri::{
 };
 use tokio::time::{sleep, Duration};
 pub mod monitors;
+#[cfg(windows)]
+mod clickthrough;
 
 /// Extra vertical room below the collapsed strip so pull-to-open still receives samples.
 const COLLAPSED_HIT_HEIGHT: f64 = 120.0;
@@ -70,6 +72,10 @@ pub fn setup_overlay_window(app: &AppHandle) -> tauri::Result<()> {
         window.set_always_on_top(true)?;
         window.set_skip_taskbar(true)?;
         window.set_decorations(false)?;
+        // Establish the layered rendering path before first show. Keep Tao's
+        // internal flag enabled; hover changes only the native input bit.
+        #[cfg(windows)]
+        window.set_ignore_cursor_events(true)?;
         fit_overlay_to_monitor(app)?;
         #[cfg(windows)] monitors::install_display_listener(&window);
         // The HWND starts hidden. React acknowledges its final viewport before first show.
@@ -168,12 +174,19 @@ fn set_overlay_clickthrough_ex(
         return Ok(());
     };
 
+    #[cfg(not(windows))]
     if !force && CLICKTHROUGH.load(Ordering::Relaxed) == clickthrough {
         return Ok(());
     }
 
-    CLICKTHROUGH.store(clickthrough, Ordering::Relaxed);
+    #[cfg(windows)]
+    {
+        let _ = force;
+        clickthrough::set(&window, clickthrough)?;
+    }
+    #[cfg(not(windows))]
     window.set_ignore_cursor_events(clickthrough)?;
+    CLICKTHROUGH.store(clickthrough, Ordering::Relaxed);
     Ok(())
 }
 

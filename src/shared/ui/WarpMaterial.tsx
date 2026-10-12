@@ -1,7 +1,7 @@
 import { Warp } from '@paper-design/shaders-react'
 import { useReducedMotion } from 'framer-motion'
 import { memo, useEffect, useRef, useState } from 'react'
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 import { PAPER_WARP_PRESET, WARP_SPEED } from './warpPreset'
 import './WarpMaterial.css'
 
@@ -17,6 +17,10 @@ export type WarpMaterialProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'>
   frame?: number
   /** Soft-field raster budget; does not change its logical layout or preset. */
   maxPixelCount?: number
+  /** Prewarm a below-the-fold field near the viewport, then retain its canvas. */
+  deferUntilNearViewport?: boolean
+  /** Custom field keeps the same visibility and reduced-motion lifecycle. */
+  renderField?: (props: { speed: number; frame?: number; maxPixelCount: number }) => ReactNode
 }
 
 /** Decorative peach/lavender material. It performs no polling or device access. */
@@ -29,6 +33,8 @@ export const WarpMaterial = memo(function WarpMaterial({
   variant = 'default',
   frame,
   maxPixelCount = 3_000_000,
+  deferUntilNearViewport = false,
+  renderField,
   ...attributes
 }: WarpMaterialProps) {
   const root = useRef<HTMLDivElement>(null)
@@ -38,6 +44,7 @@ export const WarpMaterial = memo(function WarpMaterial({
   )
   // Browsers without IntersectionObserver keep rendering; visibility still pauses it.
   const [intersecting, setIntersecting] = useState(true)
+  const [prepared, setPrepared] = useState(() => !deferUntilNearViewport || frame != null)
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -45,6 +52,23 @@ export const WarpMaterial = memo(function WarpMaterial({
     document.addEventListener('visibilitychange', update)
     return () => document.removeEventListener('visibilitychange', update)
   }, [])
+
+  useEffect(() => {
+    if (prepared) return
+    if (!deferUntilNearViewport || frame != null || typeof IntersectionObserver === 'undefined') {
+      setPrepared(true)
+      return
+    }
+    const node = root.current
+    if (!node) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting) return
+      setPrepared(true)
+      observer.disconnect()
+    }, { rootMargin: '600px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [prepared, deferUntilNearViewport, frame])
 
   useEffect(() => {
     const node = root.current
@@ -64,10 +88,11 @@ export const WarpMaterial = memo(function WarpMaterial({
       className={['warp-material', className].filter(Boolean).join(' ')}
       data-speed={effectiveSpeed}
       data-motion={moving ? 'running' : 'paused'}
+      data-prepared={prepared}
       aria-hidden="true"
     >
       <div className={['warp-material__field', fieldClassName].filter(Boolean).join(' ')}>
-        <Warp
+        {prepared ? renderField ? renderField({ speed: effectiveSpeed, frame, maxPixelCount }) : <Warp
           {...PAPER_WARP_PRESET}
           {...(variant === 'onboarding' ? { distortion: .28, softness: .85 } : {})}
           width="100%"
@@ -76,7 +101,7 @@ export const WarpMaterial = memo(function WarpMaterial({
           frame={frame}
           minPixelRatio={2}
           maxPixelCount={maxPixelCount}
-        />
+        /> : null}
       </div>
     </div>
   )

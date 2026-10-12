@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -113,7 +112,7 @@ fn read_file_version(path: &Path) -> Option<String> {
             "$v = [System.Diagnostics.FileVersionInfo]::GetVersionInfo('{path_s}'); \
              if ($v.ProductVersion) {{ $v.ProductVersion }} else {{ $v.FileVersion }}"
         );
-        let output = Command::new("powershell")
+        let output = crate::process::command("powershell")
             .args([
                 "-NoProfile",
                 "-NonInteractive",
@@ -293,7 +292,7 @@ pub fn open_path(path: &str) -> Result<(), String> {
     if !path.is_file() {
         return Err("Newer build file is missing".into());
     }
-    Command::new(&path)
+    crate::process::command(&path)
         .spawn()
         .map_err(|error| error.to_string())?;
     Ok(())

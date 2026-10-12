@@ -81,6 +81,7 @@ function waitUntilClipEnds(
     const finish = () => {
       window.clearInterval(poll)
       video.removeEventListener('ended', onEnded)
+      video.removeEventListener('error', finish)
       resolve()
     }
     const onEnded = () => finish()
@@ -89,12 +90,13 @@ function waitUntilClipEnds(
     }, 40)
 
     video.loop = false
-    if (video.ended) {
+    if (video.ended || video.error) {
       finish()
       return
     }
     video.addEventListener('ended', onEnded)
-    void video.play().catch(() => {})
+    video.addEventListener('error', finish)
+    void video.play().catch(finish)
   })
 }
 
@@ -149,6 +151,14 @@ export function VoiceFoxVideoMascot({
   /** Bumps even when the next pack URL equals the current one, so playback restarts. */
   const [liveGen, setLiveGen] = useState(0)
   const [sleepGen, setSleepGen] = useState(0)
+
+  useEffect(() => () => {
+    activeRef.current = false
+    chainGenRef.current += 1
+    liveCycleActiveRef.current = false
+    sleepCycleActiveRef.current = false
+    pauseAll([sleepRef, liveRef, wakeRef, toSleepRef, previewRef])
+  }, [])
 
   const isChainCurrent = (gen: number) =>
     activeRef.current && chainGenRef.current === gen
@@ -353,10 +363,30 @@ export function VoiceFoxVideoMascot({
       const want = wantLiveRef.current
       const cur = phaseRef.current
 
-      if (want && cur === 'live') return
-      if (!want && cur === 'sleep') return
-      if (want && cur === 'wake') return
-      if (!want && cur === 'toSleep') return
+      if (want && cur === 'live') {
+        liveCycleActiveRef.current = true
+        if (liveRef.current?.ended) startLiveCycle()
+        return
+      }
+      if (!want && cur === 'sleep') {
+        sleepCycleActiveRef.current = true
+        if (sleepRef.current?.ended) startSleepCycle()
+        return
+      }
+      if (want && cur === 'wake') {
+        if (wakeRef.current) await waitUntilClipEnds(wakeRef.current, current)
+        if (!current()) return
+        go('live')
+        startLiveCycle()
+        return
+      }
+      if (!want && cur === 'toSleep') {
+        if (toSleepRef.current) await waitUntilClipEnds(toSleepRef.current, current)
+        if (!current()) return
+        go('sleep')
+        startSleepCycle()
+        return
+      }
 
       if (want) {
         if (cur === 'sleep') {

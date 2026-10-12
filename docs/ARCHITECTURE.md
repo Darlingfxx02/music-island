@@ -42,12 +42,25 @@ flowchart LR
 - `src-tauri/src/yandex`: explicit opt-in CDP discovery, renderer validation and a fixed command/state adapter for the installed desktop client.
 - `src-tauri/src/config`: schema-versioned JSON config in `%APPDATA%\Music Island`.
 - `src-tauri/src/window`: top-center bounds, native cursor gesture watcher, click-through state, settings / intro / already-running window lifecycle.
+- The Windows main overlay establishes `WS_EX_LAYERED` while hidden and keeps
+  it across hover changes. The layered parent is initialized with uniform
+  opacity 255 and no color key so an unset/stale redirection mask cannot reject
+  input over the GPU WebView. Native input toggles only `WS_EX_TRANSPARENT`,
+  reading the actual HWND style and opacity so framework show/DPI updates cannot stale a cache.
+  The process sets WebView2's initial transparent background before creation;
+  window configuration and inline HTML also start transparent.
 - `src-tauri/src/window/taskbar`: opt-in same-process Win32 player attached to the primary taskbar. A layered `STATIC` host and owner-drawn `BUTTON` children use buffered diff painting and direct native input; the supportedOS manifest keeps layered child behavior available. It measures occupied space, uses parent-relative placement, inherits taskbar movement/clipping and recreates on Explorer or DPI changes. It never injects into or resizes Explorer.
 - `src-tauri/src/tray`: settings and quit actions; exit is routed through `shutdown`.
 - `src-tauri/src/shutdown`: one idempotent shutdown coordinator shared by tray, updater and cleanup. It stops dictation and Better Voice off the Windows event loop, with an 8s worker deadline and 2s final process-exit fallback.
 - `src-tauri/crates/handy-core`: lazy native dictation plugin; metadata/history access does not load the inference DLL or open the microphone. Activation, model management, audio capture, insertion and shutdown remain native.
 - `src-tauri/crates/dictation-runtime` and `dictation-protocol`: embedded inference/VAD DLL and versioned C ABI. Extracted files are content-addressed and verified before absolute-path loading.
 - `src-tauri/src/logging`: local startup, protocol-health and direct-provider diagnostics.
+- `src-tauri/src/process`: one child-process constructor with Windows
+  [`CREATE_NO_WINDOW`](https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags).
+  Startup version probes, Direct client restarts/`taskkill`,
+  usage app-server, sidecars, autostart, updater and cleanup all use it. It preserves
+  GUI windows and IPC pipes. The app uses the Windows GUI subsystem in both debug
+  and release; Windows settings/URLs/folders use the opener's native shell API.
 - `src-tauri/src/usage`: opt-in Codex and Claude quota probes, one generation-guarded polling task per enabled provider, backoff-aware retries and the shared native snapshot used by every window. Codex talks to the installed official `codex.exe app-server`; provider credentials are never returned to React.
 - `src-tauri/src/updater`: **portable GitHub Releases updater** — check latest release, download `music-island.exe` plus required `SHA256.txt`, SHA-256 and PE sanity checks, replace running exe and relaunch. This is the intended forever update channel (always portable).
 - `src-tauri/src/voice`: in-process Better Voice engine (capture → DSP/denoise → virtual route / VB-Cable), asset extract to `%APPDATA%\Music Island\voice\`, meters IPC.

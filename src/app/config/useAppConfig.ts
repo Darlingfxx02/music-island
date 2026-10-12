@@ -45,36 +45,32 @@ export function useAppConfig(_mediaEnabled: boolean): AppConfigController {
 
   useEffect(() => {
     let mounted = true
-
-    getConfig()
+    let changed = false
+    let cleanup: () => void = () => undefined
+    void onConfigChanged((next) => {
+      if (!mounted) return
+      changed = true
+      setConfig(withNormalizedConfig(next))
+    }).then((unlisten) => {
+      if (mounted) cleanup = unlisten
+      else unlisten()
+    }).catch(() => undefined).then(() => mounted ? getConfig() : null)
       .then((nextConfig) => {
-        if (!mounted) return
-        setConfig(withNormalizedConfig(nextConfig))
+        if (!mounted || !nextConfig) return
+        if (!changed) setConfig(withNormalizedConfig(nextConfig))
         setConfigLoaded(true)
       })
       .catch(() => {
         if (!mounted) return
-        setConfig(getDefaultConfig())
-        setConfigLoadFailed(true)
+        if (!changed) {
+          setConfig(getDefaultConfig())
+          setConfigLoadFailed(true)
+        }
         setConfigLoaded(true)
       })
 
     return () => {
       mounted = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    let cleanup: () => void = () => undefined
-    void onConfigChanged((next) => {
-      if (active) setConfig(withNormalizedConfig(next))
-    }).then((unlisten) => {
-      if (active) cleanup = unlisten
-      else unlisten()
-    }).catch(() => undefined)
-    return () => {
-      active = false
       cleanup()
     }
   }, [])

@@ -1,6 +1,6 @@
 # Yandex Music integration options
 
-Status reviewed for v0.9.9 open beta (July 2026).
+Launch persistence reviewed for 3.0.2 (October 2026).
 
 ## Chosen path: local CDP control
 
@@ -12,7 +12,48 @@ Yandex Music Desktop is an Electron application. Music Island can reattach to an
 
 It discovers only a local Yandex Music renderer target and executes a fixed Rust-side command set: state, play/pause, previous, next, seek, like/dislike and supported My Wave selection actions. The existing desktop client remains responsible for login, playback, recommendations and audio.
 
-The first restart requires an explicit confirmation in Settings. The endpoint uses a random loopback port, is never exposed to LAN, and cookies/tokens or arbitrary frontend JavaScript are not logged or accepted. Later Music Island launches validate the owning process, `music-application://` target and loopback WebSocket before reattaching without a client restart. Returning to Windows SMTC closes the debug-enabled client and launches it normally after an explicit action. When Direct stays `degraded` after a long client downtime, Settings exposes **Перезапустить** which calls the same enable path without switching providers.
+The first restart requires an explicit confirmation in Settings. The endpoint uses a random loopback port, and cookies/tokens or arbitrary frontend JavaScript are not logged or accepted. Later Music Island launches validate the installed executable, `music-application://` target and loopback WebSocket before reattaching without a client restart. Returning to Windows SMTC restores normal launch arguments and, if a debug client is running, closes that client and launches it normally after the explicit switch. When Direct stays `degraded` after a long client downtime, Settings exposes **Перезапустить** which calls the same enable path without switching providers.
+
+## Persistent Direct launches
+
+With Direct selected and its consent saved, Music Island configures the current
+user's existing Yandex Music shortcuts in Desktop, Start menu Programs, Startup
+and the pinned taskbar folder. Existing HKCU `Run` commands that target the same
+installed executable are updated too. It never creates an autostart entry,
+changes `StartupApproved`, patches the client EXE/ASAR, installs a service/task,
+or asks for Defender/firewall exclusions. Shortcut target, icon, description and
+working directory stay intact. The native implementation uses
+[Windows Shell links](https://learn.microsoft.com/en-us/windows/win32/shell/links)
+and Electron's supported
+[remote-debugging-port](https://www.electronjs.org/docs/latest/api/command-line-switches).
+
+Original arguments and the chosen port are written atomically to
+`%APPDATA%\Music Island\yandex-launch.json` before each edit. Configuration is
+idempotent. A validated active endpoint may keep its port; an occupied saved port
+is replaced before an explicit restart. Startup reconciles existing consented
+Direct settings, including migration from earlier versions. Bounded passive
+recovery repairs shortcuts or Run entries rewritten by a client update; it only
+reattaches and never restarts the client. A client already relaunched without the
+flags still needs one explicit restart; subsequent supported shortcut launches
+use the repaired arguments.
+
+Switching to SMTC, disconnecting Direct, or confirming full data removal restores
+owned arguments first. Unrelated entries, removed shortcuts and changed targets
+are left alone. Other argument edits made by the user are preserved when removing
+the recorded flags. Partial write failures roll back; failed restoration retains
+the remaining backup and prevents successful completion of the switch/cleanup.
+Connect, disconnect, startup repair and provider saves are serialized. Client
+termination targets validated installed process IDs rather than all matching
+image names.
+
+Only the standard per-user installation under
+`%LOCALAPPDATA%\Programs\YandexMusic` is supported. Common/all-users shortcuts,
+custom launchers, protocol registrations and directly opening the EXE are not
+rewritten. Desktop subfolders are not recursively scanned; only Start menu groups
+are traversed, with limits and reparse-point checks. Deleting the portable Music
+Island EXE alone cannot restore a launch configuration; disconnect Direct or use
+System → Data before removing the app. Unsigned builds may still trigger security
+software; this mechanism is not an antivirus compatibility guarantee.
 
 The adapter uses stable `data-test-id` controls where available and rediscovers common desktop PlayerBar class layouts each state evaluate so SPA route changes (Home → Collection, etc.) keep feeding title/artist when the player chrome remounts. It reads Chromium discovery responses by their declared `Content-Length` because the endpoint keeps HTTP connections alive, then keeps one serialized CDP WebSocket open. Client updates can still break this experimental path; failures are reported as Direct degraded/reconnect state and never fall through to SMTC implicitly. Overlay **Быстрая перезагрузка** and Settings **Перезапустить** call the same enable path; overlay also sends Play after a successful reconnect.
 

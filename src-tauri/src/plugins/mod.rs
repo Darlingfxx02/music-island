@@ -8,7 +8,7 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::{Mutex, OnceLock},
     thread,
     time::Duration,
@@ -385,7 +385,7 @@ fn start_plugin_locked(host: &mut PluginHost, plugin: &DiscoveredPlugin) -> Resu
         &format!("starting {}", plugin.entry_path),
     );
 
-    let mut command = Command::new(&entry);
+    let mut command = crate::process::command(&entry);
     command
         .current_dir(&plugin.root_dir)
         .args(&plugin.manifest.entry_args)
@@ -398,14 +398,6 @@ fn start_plugin_locked(host: &mut PluginHost, plugin: &DiscoveredPlugin) -> Resu
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        // Keep window creation for UI sidecars; only hide console flash.
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
 
     let mut child = command
         .spawn()

@@ -160,6 +160,14 @@ impl StreamRouter {
     }
 }
 
+/// Keep the host overlay snapshot truthful even on an early return or panic.
+struct ModelLoadNotice<'a>(&'a AppHandle);
+impl Drop for ModelLoadNotice<'_> {
+    fn drop(&mut self) {
+        crate::status::model_loading(self.0, false);
+    }
+}
+
 /// RAII guard that clears the `is_loading` flag and notifies waiters on drop.
 /// Ensures the loading flag is always reset, even on early returns or panics.
 pub struct LoadingGuard {
@@ -469,6 +477,8 @@ impl TranscriptionManager {
         debug!("Starting to load model: {}", model_id);
 
         // Emit loading started event
+        crate::status::model_loading(&self.app_handle, true);
+        let _notice = ModelLoadNotice(&self.app_handle);
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {

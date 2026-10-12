@@ -3,6 +3,21 @@
 Music Island is licensed under GPL-3.0-or-later. The portable executable also
 contains separately licensed third-party components. This notice covers the embedded voice and dictation components. Cargo dependencies retain their own licenses.
 
+## No Type dictation visuals
+
+- Upstream: [Darlingfxx02/no-tipe](https://github.com/Darlingfxx02/no-tipe).
+- Copyright (c) 2026 Darlingfxx02.
+- Adapted recorder material, shaders and motion references from
+  `Prototypes/no-tipe-island-variants.html` and `CrossPlatform/src/recorder/motion.js`.
+- Adaptations live in `src/features/dictation`, including the Waves material and
+  recorder transitions. Music Island's Fox styling and controls extend these references.
+
+The adapted portions are included and distributed in Music Island under
+GPL-3.0-or-later with the author's permission. The project maintainer confirmed
+on 12 October 2026 that this permission covers reuse and publication under GPL.
+This permission applies to the material adapted into Music Island; the separate
+upstream No Type project retains its own proprietary license.
+
 ## DeepFilterNet native runtime bridge
 
 Distributed file:
@@ -103,7 +118,7 @@ SOFTWARE.
 ## Dictation inference dependencies
 
 The runtime bundle records every shipped DLL's hash and size in its build manifest.
-`transcribe-rs 0.3.8`, `transcribe-cpp 0.2.3` and the pinned `vad-rs` revision are
+`transcribe-rs 0.3.8`, `transcribe-cpp 0.2.4` and the pinned `vad-rs` revision are
 specified in `src-tauri/crates/dictation-runtime/Cargo.lock`. Their source licenses
 and those of their native dependencies remain applicable. ONNX Runtime 1.24.2
 is obtained from Microsoft's official release (MIT); the required Microsoft VC143

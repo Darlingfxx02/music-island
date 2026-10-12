@@ -90,15 +90,15 @@ export function useMediaController({
 
   useEffect(() => {
     let active = true
-    void getSmtcHealth().then((health) => {
-      if (active) setSmtcHealth(health)
-    }).catch(() => undefined)
+    let changed = false
     let cleanup: () => void = () => undefined
     void onSmtcHealth((health) => {
-      if (active) setSmtcHealth(health)
+      if (active) { changed = true; setSmtcHealth(health) }
     }).then((unlisten) => {
       if (active) cleanup = unlisten
       else unlisten()
+    }).catch(() => undefined).then(() => active ? getSmtcHealth() : null).then((health) => {
+      if (active && !changed && health) setSmtcHealth(health)
     }).catch(() => undefined)
     return () => {
       active = false
@@ -109,17 +109,26 @@ export function useMediaController({
   useEffect(() => {
     if (!configLoaded) return
     let mounted = true
+    let changed = false
+    let cleanup: () => void = () => undefined
 
     if (enabled) {
-      getMediaSnapshot()
+      void onMediaUpdate((snapshot) => {
+        if (!mounted || snapshot.provider !== protocol || (snapshot.generation ?? 0) < (mediaRef.current?.generation ?? 0)) return
+        changed = true
+        setMedia((current) => reconcileMedia(current, snapshot))
+      }).then((unlisten) => {
+        if (mounted) cleanup = unlisten
+        else unlisten()
+      }).catch(() => undefined).then(() => mounted ? getMediaSnapshot() : null)
         .then((snapshot) => {
-          if (!mounted) return
-          setMedia((current) => reconcileMedia(current, snapshot))
+          if (!mounted || !snapshot) return
+          if (!changed) setMedia((current) => reconcileMedia(current, snapshot))
           setMediaLoaded(true)
         })
         .catch(() => {
           if (!mounted) return
-          setMediaLoadFailed(true)
+          if (!changed) setMediaLoadFailed(true)
           setMediaLoaded(true)
         })
     } else {
@@ -133,26 +142,9 @@ export function useMediaController({
 
     return () => {
       mounted = false
+      cleanup()
     }
   }, [configLoaded, enabled, protocol, reconcileMedia])
-
-  useEffect(() => {
-    if (!enabled) return
-    let active = true
-    let cleanupMedia: () => void = () => undefined
-
-    void onMediaUpdate((snapshot) => {
-      if (active) setMedia((current) => reconcileMedia(current, snapshot))
-    }).then((unlisten) => {
-      if (active) cleanupMedia = unlisten
-      else unlisten()
-    }).catch(() => undefined)
-
-    return () => {
-      active = false
-      cleanupMedia()
-    }
-  }, [enabled, reconcileMedia])
 
   useEffect(() => {
     if (!enabled || !timelineEnabled) return

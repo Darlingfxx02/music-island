@@ -13,5 +13,5 @@ music-island-dictation-protocol = { path = "../dictation-protocol" }
 anyhow = "1"
 serde_json = "1"
 transcribe-rs = { version = "=0.3.8", features = ["onnx"] }
-transcribe-cpp = { version = "=0.2.3", default-features = false, features = ["dynamic-backends", "vulkan"] }
+transcribe-cpp = { version = "=0.2.4", default-features = false, features = ["dynamic-backends", "vulkan"] }
 vad-rs = { git = "https://github.com/cjpais/vad-rs", default-features = false }

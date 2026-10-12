@@ -46,6 +46,11 @@ only a compatibility alias. Do not implement another dropdown for a new feature.
 filled for selected items and prominent feature actions. The island keeps its
 accepted icon set, with the requested filled settings gear.
 
+`ActionMenu` supports optional checkbox items (`checked`), a custom trigger icon
+and a normal 40px trigger. Checkbox items stay open for multiple changes; actions
+and single-choice Select retain their close-on-selection behavior. All variants
+share themed portal placement, arrow keys, Escape, outside click and focus return.
+
 Specialized media, segmented and fox controls retain their interaction contracts.
 Reuse their production implementations instead of making settings-only copies.
 
@@ -91,7 +96,11 @@ and feedback, not the desktop navigation geometry.
 
 - `--shadow-popover`: dark `0 8px 24px rgba(0,0,0,.22)`; light `0 6px 20px rgba(28,28,32,.12)`. Popovers never reuse the larger panel shadow. Select and ActionMenu share portal placement, theme propagation, focus, Escape and keyboard navigation.
 - `StatusChip appearance="flat"` removes glass and border for auxiliary UI. Accent badges use the paired `--badge-accent-surface` / `--badge-accent-text` tokens for stable contrast in both themes. Existing glass chips are preserved.
-- ModelCard owns title/size, one language/capability line, recommendation/selection statuses and the action footer. Selected models do not show a disabled Use button. Import is secondary to downloading.
+- ModelCard owns title/size, a recommendation naming its language and a footer
+  with languages/capabilities on the left and actions on the right. Catalog
+  language text is vertically centered against Download; selection/memory statuses
+  sit below it. Selected models do not show a disabled Use button. Import is
+  secondary to downloading.
 - Onboarding uses one idea per screen, a stable action area and the shared Warp palette with its existing softer geometry. Its UI is demonstrative except for the final explicit autostart choice.
 - Ripple direction is outward for Play/Like and inward for Pause/Unlike; both fade fully within 420 ms. Button geometry and authoritative player state remain independent.
 

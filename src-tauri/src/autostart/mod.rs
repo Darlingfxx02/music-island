@@ -68,9 +68,7 @@ mod windows {
     };
     use std::env::current_exe;
     use std::fs;
-    use std::os::windows::process::CommandExt;
     use std::path::{Path, PathBuf};
-    use std::process::Command;
     use winreg::enums::RegType::REG_BINARY;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
     use winreg::{RegKey, RegValue};
@@ -81,7 +79,6 @@ mod windows {
     const STARTUP_APPROVED_ENABLED: [u8; 12] = [
         0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     pub fn sync(enabled: bool) -> Result<AutostartStatus, String> {
         cleanup_legacy_entries()?;
@@ -180,7 +177,7 @@ mod windows {
             args = escape_ps(STARTUP_ARG),
             cwd = escape_ps(&working_dir),
         );
-        let output = Command::new("powershell")
+        let output = crate::process::command("powershell")
             .args([
                 "-NoProfile",
                 "-NonInteractive",
@@ -189,7 +186,6 @@ mod windows {
                 "-Command",
                 &script,
             ])
-            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|error| format!("failed to create startup shortcut: {error}"))?;
         if !output.status.success() {

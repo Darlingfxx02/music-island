@@ -65,6 +65,27 @@
 .music-module .direct-reload-button:hover:not(:disabled) { background: var(--surface-hover); filter: none; }
 .music-module .direct-reload-button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .music-module .direct-reload-button:disabled { opacity: .65; }
+.music-module.music-module--direct-offline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+}
+.music-module--direct-offline .music-empty-copy { justify-items: center; }
+.music-module--direct-offline .direct-reload-button.ui-button {
+  width: min(100%, 320px);
+  min-height: var(--space-9);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--fg-primary);
+  color: var(--surface-canvas);
+  font-size: var(--text-body);
+  text-align: center;
+}
+.music-module--direct-offline .direct-reload-button.ui-button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg-primary) 85%, var(--surface-canvas)); }
+.music-module--direct-offline .direct-reload-button.ui-button:active:not(:disabled) { background: var(--control-primary-hover); }
 .music-module .direct-reload-banner {
   flex-wrap: wrap;
   padding: var(--space-3);

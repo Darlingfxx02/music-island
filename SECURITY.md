@@ -20,6 +20,23 @@ application roots after shutdown and does not traverse reparse points. History
 filenames are checked at the native manager boundary before audio access/deletion.
 These checks are covered by fixtures; they are not a claim of an independent audit.
 
+## Direct Yandex launch settings
+
+Consented Direct mode persists loopback debug arguments in supported per-user
+Yandex Music shortcuts and existing HKCU Run values. It does not patch executable
+code, replace the shortcut target, register a debugger, enable autostart, or install
+a background service/task. A write-ahead backup under Music Island AppData allows
+restoration on SMTC selection or full data cleanup; failed restoration retains
+the backup. Reparse paths and foreign shortcut targets are rejected. Restart
+commands target process IDs belonging to the known installation path.
+
+The debug endpoint extends local renderer access while the client is running,
+including launches when Music Island is closed. Loopback limits network exposure;
+it does not authenticate other local processes. No antivirus/firewall exceptions
+are requested. Unsigned builds and security heuristics can still produce warnings;
+these tests are not a guarantee against false positives. See
+[launch scope and recovery](docs/YANDEX_MUSIC_API.md#persistent-direct-launches).
+
 ## Portable update integrity and executable signing
 
 The custom GitHub Releases updater requires both `music-island.exe` and

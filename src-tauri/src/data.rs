@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::{Emitter, Manager};
 use std::{
     path::PathBuf,
     sync::{Mutex, OnceLock},
@@ -79,7 +80,23 @@ pub fn open_data_folder(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn delete_all_data_and_exit(app: tauri::AppHandle, confirmation: String) -> Result<(), String> {
+pub async fn delete_all_data_and_exit(app: tauri::AppHandle, confirmation: String) -> Result<(), String> {
+    let _operation = crate::yandex::lifecycle_lock().lock().await;
+    {
+        let pending = CONFIRMATION.get_or_init(Default::default).lock().map_err(|e| e.to_string())?;
+        if pending.as_deref() != Some(&confirmation) {
+            return Err("Refresh the data summary before confirming removal".into());
+        }
+    }
+    crate::yandex::disable(false).await.map_err(|e| e.to_string())?;
+    let saved = app.state::<crate::config::ConfigState>().update_media(|media| {
+        media.protocol = crate::config::MediaProtocol::Smtc;
+        media.direct_yandex_consent = false;
+        media.direct_yandex_port = None;
+    }).map_err(|e| e.to_string())?;
+    // Prevent a queued startup/recovery task from reapplying launch flags during shutdown.
+    crate::media::switch_active_provider(&app, crate::media::MediaProvider::Smtc);
+    let _ = app.emit("config:changed", saved);
     let mut pending = CONFIRMATION
         .get_or_init(Default::default)
         .lock()
@@ -87,11 +104,9 @@ pub fn delete_all_data_and_exit(app: tauri::AppHandle, confirmation: String) -> 
     if pending.as_deref() != Some(&confirmation) {
         return Err("Refresh the data summary before confirming removal".into());
     }
-    use std::os::windows::process::CommandExt;
     // The helper contains the same fixed root list and never accepts a path.
-    std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+    crate::process::command(std::env::current_exe().map_err(|e| e.to_string())?)
         .args(["--cleanup-owned-data", &std::process::id().to_string()])
-        .creation_flags(0x08000000)
         .spawn()
         .map_err(|e| e.to_string())?;
     *pending = None;

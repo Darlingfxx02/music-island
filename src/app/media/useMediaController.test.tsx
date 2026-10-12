@@ -72,6 +72,26 @@ afterEach(async () => {
 })
 
 describe('media controller timeline lifecycle', () => {
+  it('keeps a newer track event when the initial snapshot arrives late', async () => {
+    let resolve!: (value: MediaSnapshot) => void
+    vi.mocked(api.getMediaSnapshot).mockReturnValue(new Promise(r => { resolve = r }))
+    await render()
+    const next = { ...snapshot, trackId: 'track-b', title: 'Track B', updatedAt: '2026-09-08T12:00:01.000Z' }
+    await act(async () => vi.mocked(api.onMediaUpdate).mock.calls[0][0](next))
+    await act(async () => resolve(snapshot))
+    expect(current.media?.trackId).toBe('track-b')
+    expect(current.mediaLoaded).toBe(true)
+  })
+
+  it('keeps a newer health event when the initial health arrives late', async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof api.getSmtcHealth>>) => void
+    vi.mocked(api.getSmtcHealth).mockReturnValue(new Promise(r => { resolve = r }))
+    await render()
+    const next = { status: 'degraded' as const, consecutiveFailures: 3, lastProbeMs: 20, lastError: 'timeout', sessionCount: 1 }
+    await act(async () => vi.mocked(api.onSmtcHealth).mock.calls[0][0](next))
+    await act(async () => resolve({ ...next, status: 'healthy', consecutiveFailures: 0, lastProbeMs: 1 }))
+    expect(current.smtcHealth.status).toBe('degraded')
+  })
   it('does not reapply a seek to a new track after navigation', async () => {
     await render()
     await act(async () => { await current.sendCommand({ seek: { positionMs: 60_000 } }) })

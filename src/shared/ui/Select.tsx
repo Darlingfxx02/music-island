@@ -1,9 +1,9 @@
 import { Check, ChevronDown, DotsThree } from './SettingsIcons'
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import './Select.css'
 
-type Option = { value: string; label: string; danger?: boolean }
+type Option = { value: string; label: string; danger?: boolean; checked?: boolean }
 
 const PORTAL_THEME_PROPERTIES = [
   '--focus-ring',
@@ -30,8 +30,8 @@ interface SelectProps {
 export function Select(props: SelectProps) { return <Menu {...props} /> }
 
 /** Shares placement, portal theme, dismissal and keyboard handling with Select. */
-export function ActionMenu({ label, items, disabled }: { label: string; disabled?: boolean; items: { id: string; label: string; onSelect: () => void; danger?: boolean }[] }) {
-  return <Menu actions value="" ariaLabel={label} disabled={disabled} options={items.map(item => ({ value: item.id, label: item.label, danger: item.danger }))} onChange={id => items.find(item => item.id === id)?.onSelect()} />
+export function ActionMenu({ label, items, disabled, icon, size = 'compact' }: { label: string; disabled?: boolean; icon?: ReactNode; size?: 'normal' | 'compact'; items: { id: string; label: string; onSelect: () => void; danger?: boolean; checked?: boolean }[] }) {
+  return <Menu actions actionIcon={icon} actionSize={size} value="" ariaLabel={label} disabled={disabled} options={items.map(item => ({ value: item.id, label: item.label, danger: item.danger, checked: item.checked }))} onChange={id => items.find(item => item.id === id)?.onSelect()} />
 }
 
 function Menu({
@@ -42,7 +42,9 @@ function Menu({
   ariaLabel,
   placeholder = '—',
   actions = false,
-}: SelectProps & { actions?: boolean }) {
+  actionIcon,
+  actionSize = 'compact',
+}: SelectProps & { actions?: boolean; actionIcon?: ReactNode; actionSize?: 'normal' | 'compact' }) {
   const id = useId()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -182,7 +184,7 @@ function Menu({
         ref={buttonRef}
         id={id}
         type="button"
-        className={['dark-select', actions ? 'dark-select--actions' : '', open ? 'dark-select--open' : ''].filter(Boolean).join(' ')}
+        className={['dark-select', actions ? 'dark-select--actions' : '', actions && actionSize === 'normal' ? 'dark-select--actions-normal' : '', open ? 'dark-select--open' : ''].filter(Boolean).join(' ')}
         aria-haspopup={actions ? 'menu' : 'listbox'}
         aria-expanded={open}
         aria-controls={open ? `${id}-menu` : undefined}
@@ -203,7 +205,7 @@ function Menu({
           }
         }}
       >
-        {actions ? <DotsThree size={22} weight="bold" aria-hidden /> : <><span id={`${id}-value`} className="dark-select__label" title={label}>{label}</span><ChevronDown size={14} className="dark-select__chevron" aria-hidden /></>}
+        {actions ? actionIcon ?? <DotsThree size={22} weight="bold" aria-hidden /> : <><span id={`${id}-value`} className="dark-select__label" title={label}>{label}</span><ChevronDown size={14} className="dark-select__chevron" aria-hidden /></>}
       </button>
       {open
         ? createPortal(
@@ -220,25 +222,29 @@ function Menu({
                 <div className="dark-select-option dark-select-option--empty" role="option" aria-disabled="true">{placeholder}</div>
               ) : (
                 options.map((option, index) => {
-                  const active = option.value === value
+                  const checkbox = actions && option.checked !== undefined
+                  const active = checkbox ? option.checked : option.value === value
                   return (
                     <button
                       key={option.value}
                       ref={(element) => { optionRefs.current[index] = element }}
                       type="button"
-                      role={actions ? 'menuitem' : 'option'}
+                      role={checkbox ? 'menuitemcheckbox' : actions ? 'menuitem' : 'option'}
                       tabIndex={-1}
                       aria-selected={actions ? undefined : active}
+                      aria-checked={checkbox ? option.checked : undefined}
                       data-danger={option.danger || undefined}
                       className={[
                         'dark-select-option',
+                        checkbox ? 'dark-select-option--checkbox' : '',
                         active ? 'dark-select-option--active' : '',
                       ].filter(Boolean).join(' ')}
                       onClick={() => {
-                        closeMenu(true)
+                        if (!checkbox) closeMenu(true)
                         onChange(option.value)
                       }}
                     >
+                      {checkbox ? <span className="dark-select-option__checkbox" data-checked={option.checked || undefined} aria-hidden="true">{option.checked ? <Check size={12} weight="bold" /> : null}</span> : null}
                       <span>{option.label}</span>
                       {active && !actions ? <Check size={14} className="dark-select-option__check" aria-hidden /> : null}
                     </button>
@@ -255,7 +261,8 @@ function Menu({
 
 function readPortalTheme(trigger: HTMLElement) {
   const computed = getComputedStyle(trigger)
-  const theme = { colorScheme: computed.colorScheme } as CSSProperties & Record<string, string>
+  const theme = { colorScheme: computed.colorScheme, fontFamily: computed.fontFamily,
+    fontSize: computed.fontSize, fontWeight: computed.fontWeight, lineHeight: computed.lineHeight } as CSSProperties & Record<string, string>
   for (const property of PORTAL_THEME_PROPERTIES) {
     theme[property] = computed.getPropertyValue(property)
   }

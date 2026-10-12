@@ -313,7 +313,7 @@ fn gated_filler_words_for_language(lang: &str) -> &'static [&'static str] {
     let base_lang = lang.split(&['-', '_'][..]).next().unwrap_or(lang);
 
     match base_lang {
-        "en" => &["um", "ah", "eh", "ha"],
+        "en" => &["um", "ah", "eh"],
         "de" => &["äh", "ähm"],
         "fr" => &["euh"],
         _ => &[],
@@ -361,18 +361,68 @@ fn collapse_stutters(text: &str) -> String {
     result.join(" ")
 }
 
+/// Whether a word appended to `kept` would open a sentence: nothing but
+/// whitespace so far, or the last visible character ends a sentence.
+fn opens_sentence(kept: &str) -> bool {
+    kept.trim_end()
+        .chars()
+        .next_back()
+        .is_none_or(|c| matches!(c, '.' | '!' | '?' | '…'))
+}
+
+/// Appends `segment` to `kept`. While `capital_owed` is set, the first
+/// alphanumeric character of `segment` is uppercased and the debt is settled.
+fn push_restoring_capital(kept: &mut String, segment: &str, capital_owed: &mut bool) {
+    if *capital_owed {
+        if let Some((index, first)) = segment.char_indices().find(|(_, c)| c.is_alphanumeric()) {
+            *capital_owed = false;
+            kept.push_str(&segment[..index]);
+            kept.extend(first.to_uppercase());
+            kept.push_str(&segment[index + first.len_utf8()..]);
+            return;
+        }
+    }
+    kept.push_str(segment);
+}
+
+/// Deletes every match of one filler pattern. A capitalized filler that opened
+/// a sentence hands its capital to the word that takes its place, so
+/// "Um, so I think" becomes "So I think" rather than "so I think".
+fn remove_filler_matches(text: &str, pattern: &Regex) -> String {
+    remove_filler_tokens(text, pattern, |_| true)
+}
+
+fn remove_filler_tokens(text: &str, pattern: &Regex, is_filler: impl Fn(&str) -> bool) -> String {
+    let mut kept = String::with_capacity(text.len());
+    let mut resume = 0;
+    let mut capital_owed = false;
+
+    for filler in pattern
+        .find_iter(text)
+        .filter(|token| is_filler(token.as_str()))
+    {
+        push_restoring_capital(&mut kept, &text[resume..filler.start()], &mut capital_owed);
+        let capitalized = filler.as_str().starts_with(char::is_uppercase);
+        capital_owed |= capitalized && opens_sentence(&kept);
+        resume = filler.end();
+    }
+    push_restoring_capital(&mut kept, &text[resume..], &mut capital_owed);
+
+    kept
+}
+
 // Whole whitespace-delimited tokens only: do not delete part of a stuttered
 // word, URL, identifier, or a quoted example. Single а/и/э are meaningful.
 static RUSSIAN_HESITATION: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^(?:э{2,}|а{2,}|э(?:[-‐‑–]э)+|а(?:[-‐‑–]а)+|эм+|э-м+|м(?:[-‐‑–]м)+)[,.!?…]?$" ).unwrap()
+    Regex::new(r"(?i)^(?:э{2,}|а{2,}|э(?:[-‐‑–]э)+|а(?:[-‐‑–]а)+|эм+|э-м+|м(?:[-‐‑–]м)+)[,.!?…]?$")
+        .unwrap()
 });
 static NON_SPACE_TOKEN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\S+").unwrap());
 
 fn remove_russian_hesitations(text: &str) -> String {
-    NON_SPACE_TOKEN.replace_all(text, |capture: &regex::Captures<'_>| {
-        let token = &capture[0];
-        if RUSSIAN_HESITATION.is_match(token) { String::new() } else { token.to_owned() }
-    }).into_owned()
+    remove_filler_tokens(text, &NON_SPACE_TOKEN, |token| {
+        RUSSIAN_HESITATION.is_match(token)
+    })
 }
 
 /// Removes filler words from transcription output when enabled.
@@ -425,11 +475,13 @@ pub fn remove_filler_words(
     // Remove filler words
     let mut filtered = text.to_string();
     for pattern in &patterns {
-        filtered = pattern.replace_all(&filtered, "").to_string();
+        filtered = remove_filler_matches(&filtered, pattern);
     }
 
     if custom_filler_words.is_none()
-        && language.language().is_some_and(|lang| lang.split(['-', '_']).next() == Some("ru"))
+        && language
+            .language()
+            .is_some_and(|lang| lang.split(['-', '_']).next() == Some("ru"))
     {
         filtered = remove_russian_hesitations(&filtered);
     }
@@ -458,9 +510,26 @@ mod tests {
 
     #[test]
     fn russian_hesitations_are_removed_without_damaging_words() {
-        assert_eq!(filter_transcription_output("Эээ, сейчас а-а добавим эм, кнопку м-м и э-э подсказку.", "ru", &None), "сейчас добавим кнопку и подсказку.");
-        assert_eq!(filter_transcription_output("А я и ты. А-а-абсолютно, эканье, эмаль, гамма, эхо, мм, https://a-a.ru.", "ru", &None), "А я и ты. А-а-абсолютно, эканье, эмаль, гамма, эхо, мм, https://a-a.ru.");
-        assert_eq!(filter_transcription_output("Слово «а-а» и буква э.", "ru", &None), "Слово «а-а» и буква э.");
+        assert_eq!(
+            filter_transcription_output(
+                "Эээ, сейчас а-а добавим эм, кнопку м-м и э-э подсказку.",
+                "ru",
+                &None
+            ),
+            "Сейчас добавим кнопку и подсказку."
+        );
+        assert_eq!(
+            filter_transcription_output(
+                "А я и ты. А-а-абсолютно, эканье, эмаль, гамма, эхо, мм, https://a-a.ru.",
+                "ru",
+                &None
+            ),
+            "А я и ты. А-а-абсолютно, эканье, эмаль, гамма, эхо, мм, https://a-a.ru."
+        );
+        assert_eq!(
+            filter_transcription_output("Слово «а-а» и буква э.", "ru", &None),
+            "Слово «а-а» и буква э."
+        );
     }
 
     #[test]
@@ -469,8 +538,35 @@ mod tests {
         let ru = OutputLanguageEvidence::UserSelected("ru".into());
         assert_eq!(remove_filler_words(text, &ru, &None, false), text);
         assert_eq!(remove_filler_words(text, &ru, &Some(vec![]), true), text);
-        assert_eq!(remove_filler_words(text, &OutputLanguageEvidence::Unknown, &None, true), text);
-        assert_eq!(remove_filler_words(text, &ru, &Some(vec!["потом".into()]), true), "Эээ, а-а ");
+        assert_eq!(
+            remove_filler_words(text, &OutputLanguageEvidence::Unknown, &None, true),
+            text
+        );
+        assert_eq!(
+            remove_filler_words(text, &ru, &Some(vec!["потом".into()]), true),
+            "Эээ, а-а "
+        );
+    }
+
+    #[test]
+    fn test_filter_leading_filler_keeps_sentence_capital() {
+        let result = filter_transcription_output("Um, so I think we should ship it.", "en", &None);
+        assert_eq!(result, "So I think we should ship it.");
+
+        let result = filter_transcription_output("That works. Um, let me check.", "en", &None);
+        assert_eq!(result, "That works. Let me check.");
+
+        // Mid-sentence there is no capital to hand over.
+        let result = filter_transcription_output("He said, Um, not today.", "en", &None);
+        assert_eq!(result, "He said, not today.");
+    }
+
+    #[test]
+    fn preserves_english_laughter() {
+        assert_eq!(
+            filter_transcription_output("Ha, that was funny.", "en", &None),
+            "Ha, that was funny."
+        );
     }
 
     /// Exercise the complete cleanup sequence with an explicitly selected
@@ -542,7 +638,7 @@ mod tests {
     fn test_filter_filler_words_case_insensitive() {
         let text = "UHM this is UH a test";
         let result = filter_transcription_output(text, "en", &None);
-        assert_eq!(result, "this is a test");
+        assert_eq!(result, "This is a test");
     }
 
     #[test]
@@ -570,7 +666,7 @@ mod tests {
     fn test_filter_combined() {
         let text = "  Uhm, so I was, uh, thinking about this  ";
         let result = filter_transcription_output(text, "en", &None);
-        assert_eq!(result, "so I was, thinking about this");
+        assert_eq!(result, "So I was, thinking about this");
     }
 
     #[test]

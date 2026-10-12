@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
 };
+use crate::embedded_assets::EmbeddedAsset;
 include!(concat!(env!("OUT_DIR"), "/runtime_assets.rs"));
 struct Runtime {
     _library: libloading::Library,
@@ -15,73 +16,19 @@ struct Runtime {
     release: Release,
 }
 static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
-pub(crate) fn checked_directory(path: &Path) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if parent != path {
-            checked_directory(parent)?;
-        }
-    }
-    if path.exists() {
-        let m = std::fs::symlink_metadata(path)?;
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            if m.file_attributes() & 0x400 != 0 {
-                bail!("Runtime directory must not be a reparse point");
-            }
-        }
-        if !m.is_dir() {
-            bail!("Runtime path is not a directory");
-        }
-    } else {
-        std::fs::create_dir(path)?;
-    }
-    Ok(())
-}
+pub(crate) use crate::embedded_assets::checked_directory;
 fn extract() -> Result<PathBuf> {
     if RUNTIME_FILES.is_empty() {
         bail!("This development build has no dictation engine. Run npm run dictation:bundle, then rebuild.");
     }
     let mut digest = Sha256::new();
-    for (name, bytes) in RUNTIME_FILES {
-        digest.update(name);
-        digest.update(Sha256::digest(bytes));
+    for asset in RUNTIME_FILES {
+        digest.update(asset.name);
+        digest.update(asset.sha256);
     }
     let version = format!("abi{}-{:x}", ABI_VERSION, digest.finalize());
     let path = crate::portable::resources().join(version);
-    checked_directory(&path)?;
-    for (name, bytes) in RUNTIME_FILES {
-        let target = path.join(name);
-        if let Ok(meta) = std::fs::symlink_metadata(&target) {
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::MetadataExt;
-                if meta.file_attributes() & 0x400 != 0 {
-                    bail!("Runtime file must not be a reparse point");
-                }
-            }
-            if !meta.is_file() {
-                bail!("Invalid runtime file");
-            }
-        }
-        if std::fs::read(&target).is_ok_and(|b| Sha256::digest(&b) == Sha256::digest(bytes)) {
-            continue;
-        }
-        let temporary = target.with_extension(format!("{}.extracting", std::process::id()));
-        {
-            use std::io::Write;
-            let mut f = std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&temporary)?;
-            f.write_all(bytes)?;
-            f.sync_all()?;
-        }
-        std::fs::rename(&temporary, &target)?;
-        if Sha256::digest(std::fs::read(&target)?) != Sha256::digest(bytes) {
-            bail!("Runtime integrity check failed");
-        }
-    }
+    crate::embedded_assets::extract_assets(RUNTIME_FILES, &path)?;
     Ok(std::fs::canonicalize(path)?)
 }
 impl Runtime {

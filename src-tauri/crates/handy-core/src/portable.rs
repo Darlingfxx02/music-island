@@ -1,10 +1,8 @@
-use rust_embed::Embed;
+use crate::embedded_assets::EmbeddedAsset;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 static DATA: OnceLock<PathBuf> = OnceLock::new();
-#[derive(Embed)]
-#[folder = "resources/"]
-struct Assets;
+include!(concat!(env!("OUT_DIR"), "/handy_assets.rs"));
 pub fn init() {
     crate::storage::remember_hf();
     let root = data_dir().unwrap();
@@ -39,50 +37,8 @@ pub fn resources() -> PathBuf {
     data_dir().unwrap().join("runtime").join("handy-0.9.7")
 }
 pub fn extract_resources() -> std::io::Result<()> {
-    use sha2::{Digest, Sha256};
-    for name in Assets::iter() {
-        let file = Assets::get(name.as_ref()).unwrap();
-        let path = resources().join("resources").join(name.as_ref());
-        crate::runtime::checked_directory(path.parent().unwrap()).map_err(std::io::Error::other)?;
-        if let Ok(meta) = std::fs::symlink_metadata(&path) {
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::MetadataExt;
-                if meta.file_attributes() & 0x400 != 0 {
-                    return Err(std::io::Error::other(
-                        "Resource must not be a reparse point",
-                    ));
-                }
-            }
-            if !meta.is_file() {
-                return Err(std::io::Error::other("Invalid resource file"));
-            }
-        }
-        if std::fs::read(&path)
-            .is_ok_and(|bytes| Sha256::digest(&bytes) == Sha256::digest(file.data.as_ref()))
-        {
-            continue;
-        }
-        let partial = path.with_extension(format!(
-            "{}-{}.extracting",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(std::io::Error::other)?
-                .as_nanos()
-        ));
-        {
-            use std::io::Write;
-            let mut output = std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&partial)?;
-            output.write_all(file.data.as_ref())?;
-            output.sync_all()?;
-        }
-        std::fs::rename(partial, path)?;
-    }
-    Ok(())
+    crate::embedded_assets::extract_assets(HANDY_FILES, &resources().join("resources"))
+        .map_err(std::io::Error::other)
 }
 
 pub fn prepare_storage() -> anyhow::Result<()> {

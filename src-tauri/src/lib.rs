@@ -7,6 +7,7 @@ mod logging;
 mod media;
 mod onboarding;
 mod plugins;
+mod process;
 mod shutdown;
 mod tray;
 mod updater;
@@ -32,9 +33,26 @@ fn get_taskbar_status() -> window::taskbar::TaskbarStatus {
 #[tauri::command]
 async fn save_config(
     app: tauri::AppHandle,
-    config: AppConfig,
+    mut config: AppConfig,
     state: State<'_, ConfigState>,
 ) -> Result<AppConfig, String> {
+    let media_before_wait = state.load().map_err(|error| error.to_string())?.media;
+    let _operation = yandex::lifecycle_lock().lock().await;
+    let previous = state.load().map_err(|error| error.to_string())?;
+    // An appearance save queued during connection must not undo the newly selected provider.
+    if config.media == media_before_wait { config.media = previous.media.clone(); }
+    if matches!(config.media.protocol, config::MediaProtocol::YandexDirect) && !config.media.direct_yandex_consent {
+        return Err("Confirm the Direct connection before selecting it".into());
+    }
+    let direct = matches!(config.media.protocol, config::MediaProtocol::YandexDirect)
+        && config.media.direct_yandex_consent;
+    if !direct {
+        if matches!(previous.media.protocol, config::MediaProtocol::YandexDirect) {
+            yandex::disable(true).await.map_err(|error| error.to_string())?;
+        } else {
+            yandex::reconcile_launch(false).await.map_err(|error| error.to_string())?;
+        }
+    }
     let previous_monitor = state.load().ok().and_then(|c| c.behavior.monitor_id);
     let saved = state.save(config).map_err(|error| error.to_string())?;
     if previous_monitor != saved.behavior.monitor_id {
@@ -113,8 +131,31 @@ fn get_direct_yandex_status() -> yandex::DirectYandexStatus {
 }
 
 #[tauri::command]
-async fn enable_direct_yandex(app: tauri::AppHandle) -> Result<yandex::DirectYandexStatus, String> {
-    let status = yandex::enable().await.map_err(|error| error.to_string())?;
+async fn enable_direct_yandex(app: tauri::AppHandle, state: State<'_, ConfigState>) -> Result<yandex::DirectYandexStatus, String> {
+    let _operation = yandex::lifecycle_lock().lock().await;
+    let previous = state.load().map_err(|error| error.to_string())?;
+    let status = match yandex::enable().await {
+        Ok(status) => status,
+        Err(error) => {
+            if !matches!(previous.media.protocol, config::MediaProtocol::YandexDirect) {
+                yandex::reconcile_launch(false).await.map_err(|rollback| format!("{error:#}; {rollback:#}"))?;
+            }
+            return Err(error.to_string());
+        }
+    };
+    let saved = match state.update_media(|media| {
+        media.protocol = config::MediaProtocol::YandexDirect;
+        media.direct_yandex_consent = true;
+        media.direct_yandex_port = status.port;
+    }) {
+        Ok(saved) => saved,
+        Err(error) => {
+            yandex::disable(true).await.map_err(|rollback| format!("{error:#}; {rollback:#}"))?;
+            return Err(error.to_string());
+        }
+    };
+    media::switch_active_provider(&app, media::MediaProvider::YandexDirect);
+    let _ = app.emit("config:changed", saved);
     let _ = app.emit("direct:status", status.clone());
     Ok(status)
 }
@@ -123,10 +164,19 @@ async fn enable_direct_yandex(app: tauri::AppHandle) -> Result<yandex::DirectYan
 async fn disable_direct_yandex(
     app: tauri::AppHandle,
     restart_plain: bool,
+    state: State<'_, ConfigState>,
 ) -> Result<yandex::DirectYandexStatus, String> {
+    let _operation = yandex::lifecycle_lock().lock().await;
     let status = yandex::disable(restart_plain)
         .await
         .map_err(|error| error.to_string())?;
+    let saved = state.update_media(|media| {
+        media.protocol = config::MediaProtocol::Smtc;
+        media.direct_yandex_consent = false;
+        media.direct_yandex_port = None;
+    }).map_err(|error| error.to_string())?;
+    media::switch_active_provider(&app, media::MediaProvider::Smtc);
+    let _ = app.emit("config:changed", saved);
     let _ = app.emit("direct:status", status.clone());
     Ok(status)
 }
@@ -444,18 +494,25 @@ pub fn run() {
                 });
                 // Pin keeps the island open; click-through is driven by the cursor
                 // hit-band watcher (fullscreen HWND), not forced off for the whole monitor.
-                if matches!(config.media.protocol, config::MediaProtocol::YandexDirect)
-                    && config.media.direct_yandex_consent
                 {
-                    let direct_port = config.media.direct_yandex_port;
                     let direct_app = handle.clone();
                     let config_state = app.state::<ConfigState>().inner().clone();
                     tauri::async_runtime::spawn(async move {
+                        let _operation = yandex::lifecycle_lock().lock().await;
+                        let Ok(current) = config_state.load() else { return; };
+                        let direct = matches!(current.media.protocol, config::MediaProtocol::YandexDirect)
+                            && current.media.direct_yandex_consent;
+                        if let Err(error) = yandex::reconcile_launch(direct).await {
+                            logging::append_event(&format!("Yandex launch settings reconciliation failed: {error:#}"));
+                            let _ = direct_app.emit("direct:status", yandex::status());
+                            return;
+                        }
+                        if !direct { return; }
+                        let direct_port = current.media.direct_yandex_port;
                         match yandex::reattach(direct_port).await {
                             Ok(status) if status.port != direct_port => {
-                                if let Ok(mut current) = config_state.load() {
-                                    current.media.direct_yandex_port = status.port;
-                                    if let Ok(saved) = config_state.save(current) {
+                                {
+                                    if let Ok(saved) = config_state.update_media(|media| media.direct_yandex_port = status.port) {
                                         let _ = direct_app.emit("config:changed", saved);
                                     }
                                 }

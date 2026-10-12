@@ -24,10 +24,12 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: 'Перед подключением',
+  name: 'Постоянное подключение через ярлыки',
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement)
     await expect(canvas.getByRole('dialog')).toHaveAccessibleDescription(/перезапустится|will restart/)
+    await expect(canvas.getByRole('dialog')).toHaveAccessibleDescription(/ярлыки|shortcuts/)
+    await expect(canvas.getByText(/обычный запуск Яндекс Музыки восстановится|restores normal Yandex Music launches/)).toBeInTheDocument()
     await userEvent.click(canvas.getByRole('button', { name: /^(Подключить|Connect)$/ }))
     await expect(args.onConnect).toHaveBeenCalledTimes(1)
     await userEvent.click(canvas.getByRole('button', { name: /^(Отмена|Cancel)$/ }))

@@ -24,6 +24,8 @@ it('keeps history, downloads and credentials out of the island and overlay capab
   const allowed = [...permission.matchAll(/commands.allow = \[([^\]]+)\]/g)]
     .flatMap((match) => [...match[1].matchAll(/"([a-z_]+)"/g)].map((item) => item[1]))
   expect([...new Set(allowed)].sort()).toEqual(['cancel_operation', 'copy_result', 'get_status', 'toggle'])
+  const overlay = permission.split('identifier = "overlay"')[1]
+  expect(overlay).toContain('"toggle"')
   for (const [name, window] of [['controls', 'main'], ['overlay', 'recording_overlay']]) {
     const capability = JSON.parse(read(`src-tauri/capabilities/dictation-${name}.json`))
     expect(capability.windows).toEqual([window])

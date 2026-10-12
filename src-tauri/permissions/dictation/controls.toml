@@ -5,5 +5,5 @@ commands.allow = ["get_status", "toggle"]
 
 [[permission]]
 identifier = "overlay"
-description = "Read state and cancel the active dictation operation."
-commands.allow = ["get_status", "cancel_operation", "copy_result"]
+description = "Read state, finish/cancel the active dictation operation or copy its result."
+commands.allow = ["get_status", "toggle", "cancel_operation", "copy_result"]

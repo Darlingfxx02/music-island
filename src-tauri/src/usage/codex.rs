@@ -2,7 +2,7 @@ use std::{
     env, fs,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -28,18 +28,12 @@ impl Drop for ChildGuard {
 pub(crate) fn probe() -> Result<ProbeData, ProbeError> {
     let executable = find_codex_executable().ok_or(ProbeError::NotInstalled)?;
     let _source_kind = executable.kind;
-    let mut command = Command::new(executable.path);
+    let mut command = crate::process::command(executable.path);
     command
         .args(["app-server", "--stdio"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
     let mut child = command.spawn().map_err(|_| ProbeError::NotInstalled)?;
 
     let mut stdin = child.stdin.take().ok_or(ProbeError::Protocol)?;

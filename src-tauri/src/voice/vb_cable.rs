@@ -124,12 +124,7 @@ fn find_inf(resource_dir: Option<&Path>) -> Option<PathBuf> {
 
 fn run_setup_elevated(setup: &Path) -> Result<i32, String> {
     let setup_str = setup.to_str().ok_or("Invalid setup path")?;
-    #[cfg(windows)]
-    use std::os::windows::process::CommandExt;
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    let mut cmd = std::process::Command::new("powershell.exe");
+    let mut cmd = crate::process::command("powershell.exe");
     cmd.args([
         "-NoProfile",
         "-WindowStyle",
@@ -140,8 +135,6 @@ fn run_setup_elevated(setup: &Path) -> Result<i32, String> {
             setup_str.replace('\'', "''")
         ),
     ]);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
 
     let output = cmd
         .output()
@@ -151,24 +144,17 @@ fn run_setup_elevated(setup: &Path) -> Result<i32, String> {
 
 fn install_via_inf(inf: &Path) -> Result<i32, String> {
     let inf_str = inf.to_str().ok_or("Invalid INF path")?;
-    #[cfg(windows)]
-    use std::os::windows::process::CommandExt;
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    let mut cmd = std::process::Command::new("powershell.exe");
+    let mut cmd = crate::process::command("powershell.exe");
     cmd.args([
         "-NoProfile",
         "-WindowStyle",
         "Hidden",
         "-Command",
         &format!(
-            "$p = Start-Process -FilePath 'pnputil.exe' -ArgumentList @('/add-driver','{}','/install') -Verb RunAs -PassThru -Wait; if ($null -eq $p) {{ exit 1223 }}; exit $p.ExitCode",
+            "$p = Start-Process -FilePath 'pnputil.exe' -ArgumentList @('/add-driver','{}','/install') -Verb RunAs -WindowStyle Hidden -PassThru -Wait; if ($null -eq $p) {{ exit 1223 }}; exit $p.ExitCode",
             inf_str.replace('\'', "''")
         ),
     ]);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
 
     let output = cmd
         .output()

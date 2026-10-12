@@ -9,8 +9,7 @@ import type { UsageSnapshot } from '../../shared/lib/usageTypes'
 import { getIslandLayout, type IslandLayoutElement, type IslandLayoutZone } from '../../shared/lib/islandLayout'
 import { getUsageWidgetCompact, getUsageWidgetScale } from '../../shared/lib/uiPrefs'
 import { MusicModule } from '../music/MusicModule'
-import { MediaArtwork, NavigationButton, PlaybackButton, ReactionButton, PlaybackModeButton } from '../music/MusicControls'
-import { ProgressStrip } from '../music/ProgressStrip'
+import { IslandMusicElementSample } from './IslandMusicElementSample'
 import { UsageStatusChip } from '../usage/UsageStatusChip'
 import { WarpSurface } from '../../shared/ui/WarpSurface'
 import { projectPreviewScale } from '../../shared/lib/previewSizing'
@@ -159,11 +158,5 @@ export function IslandPreview({ config, label, usage, onResize, active = true, r
 
 export function IslandElementSample({ element, usage, locale = 'ru' }: { element: IslandLayoutElement; usage?: UsageSnapshot | null; locale?: 'ru' | 'en' }) {
   if (element === 'codex' || element === 'claude') return <UsageStatusChip snapshot={usage ?? null} enabledProviders={[element]} compact locale={locale} />
-  if (element === 'previous' || element === 'next') return <NavigationButton direction={element} />
-  if (element === 'artwork') return <MediaArtwork src={media.thumbnailDataUrl} />
-  if (element === 'transport') return <PlaybackButton />
-  if (element === 'like' || element === 'dislike') return <ReactionButton kind={element} />
-  if (element === 'shuffle' || element === 'repeat') return <PlaybackModeButton kind={element} locale={locale} />
-  if (element === 'progress') return <button type="button" className="progress-track" aria-label="Seek track" style={{ '--progress': .34, width: 210 } as CSSProperties}><ProgressStrip frame={{ trackKey: 'catalog', ratio: .34, positionMs: media.positionMs, durationMs: media.durationMs, label: 'Music Island · Evening Light' }} navigation={null} reducedMotion scrubbing={false} /></button>
-  return <button type="button" className="icon-button" aria-label={element}>{element === 'microphone' ? <Mic size={16} /> : <Pin size={16} />}</button>
+  return <IslandMusicElementSample element={element} locale={locale} />
 }

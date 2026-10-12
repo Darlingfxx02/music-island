@@ -10,11 +10,21 @@ const meta = {
 } satisfies Meta<typeof ModelCard>
 export default meta
 type Story = StoryObj<typeof meta>
-export const Download: Story = { name: 'Рекомендуемая · скачать' }
+export const Download: Story = { name: 'Рекомендуемая · скачать', play: async ({ canvasElement }) => {
+  await expect(within(canvasElement).getByText('Рекомендовано для русского')).toBeVisible()
+} }
 export const Selected: Story = { name: 'Выбрана · в памяти', args: { model: { ...gigaamRnnt, is_downloaded: true }, selected: true, loaded: true } }
 export const SelectedLight: Story = { ...Selected, name: 'Выбрана · светлая тема', parameters: { light: true } }
-export const English: Story = { name: 'English · Parakeet', args: { locale: 'en', model: parakeetEnglish } }
+export const English: Story = { name: 'English · Parakeet', args: { locale: 'en', model: parakeetEnglish }, play: async ({ canvasElement }) => {
+  await expect(within(canvasElement).getByText('Recommended for English')).toBeVisible()
+} }
 export const Light: Story = { name: 'Светлая тема', parameters: { light: true } }
+export const EnglishModelRussian: Story = { name: 'Для английского · русский интерфейс', args: { model: parakeetEnglish }, play: async ({ canvasElement }) => {
+  await expect(within(canvasElement).getByText('Рекомендовано для английского')).toBeVisible()
+} }
+export const RussianModelEnglish: Story = { name: 'For Russian · English UI', args: { locale: 'en' }, play: async ({ canvasElement }) => {
+  await expect(within(canvasElement).getByText('Recommended for Russian')).toBeVisible()
+} }
 export const Downloading: Story = { name: 'Загрузка · отмена', args: { downloading: true, progress: 48 }, play: async ({ canvasElement, args }) => { await userEvent.click(within(canvasElement).getByRole('button', { name: 'Отменить' })); await expect(args.onCancel).toHaveBeenCalledOnce() } }
 export const Failed: Story = { name: 'Ошибка сети · повторить', args: { error: 'Нет соединения с сервером.', model: { ...gigaamRnnt, partial_size: 4000 } } }
 export const LongName: Story = { name: 'Длинное название · узкая карточка', args: { model: { ...gigaamRnnt, name: 'Custom speech recognition model with a long descriptive name' } }, parameters: { workshop: { width: 380 } } }

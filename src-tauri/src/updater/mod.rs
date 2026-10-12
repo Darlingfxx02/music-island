@@ -12,7 +12,7 @@ const GITHUB_REPO: &str = "music-island";
 const PREFERRED_ASSET: &str = "music-island.exe";
 const CHECKSUM_ASSET: &str = "SHA256.txt";
 const MAX_CHECKSUM_BYTES: usize = 64 * 1024;
-const USER_AGENT: &str = "MusicIsland-Updater/3.0.1";
+const USER_AGENT: &str = "MusicIsland-Updater/3.0.2";
 const TEMP_ROOT_NAME: &str = "MusicIslandUpdate";
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,6 +147,8 @@ pub async fn download_and_install_update(
     app: AppHandle,
     force_same_version: bool,
 ) -> anyhow::Result<()> {
+    static UPDATE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = UPDATE_LOCK.try_lock().map_err(|_| anyhow::anyhow!("An update is already in progress"))?;
     let check = check_for_updates(app.clone(), force_same_version).await?;
     if !check.has_update {
         anyhow::bail!(check.message);
@@ -190,7 +192,7 @@ pub async fn download_and_install_update(
         "Preparing to replace portable exe…",
     );
 
-    match apply_portable_replace(&app, &staged_exe, &latest) {
+    match apply_portable_replace(&app, &staged_exe, &latest, &expected_sha256) {
         Ok(()) => Ok(()),
         Err(error) => {
             cleanup_path(&staging);
@@ -312,7 +314,29 @@ async fn download_exe(app: &AppHandle, url: &str, dest: &Path) -> anyhow::Result
     Ok(())
 }
 
-fn apply_portable_replace(app: &AppHandle, staged_exe: &Path, latest: &str) -> anyhow::Result<()> {
+fn replace_portable_file(staged: &Path, current: &Path, old: &Path, expected: &[u8; 32]) -> anyhow::Result<()> {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let prepared = sibling_with_suffix(current, &format!(".{}-{stamp}.pending", std::process::id()));
+    let result = (|| {
+        let mut input = File::open(staged)?;
+        let mut output = fs::OpenOptions::new().write(true).create_new(true).open(&prepared)?;
+        std::io::copy(&mut input, &mut output)?;
+        output.sync_all()?;
+        drop(output);
+        verify_file_sha256(&prepared, expected)?;
+        if old.exists() { fs::remove_file(old)?; }
+        fs::rename(current, old)?;
+        if let Err(error) = fs::rename(&prepared, current) {
+            fs::rename(old, current).map_err(|restore| anyhow::anyhow!("Install failed ({error}); restore failed ({restore}); backup: {}", old.display()))?;
+            return Err(error.into());
+        }
+        Ok(())
+    })();
+    if result.is_err() { let _ = fs::remove_file(&prepared); }
+    result
+}
+
+fn apply_portable_replace(app: &AppHandle, staged_exe: &Path, latest: &str, expected: &[u8; 32]) -> anyhow::Result<()> {
     let current = std::env::current_exe()
         .map_err(|error| anyhow::anyhow!("Cannot resolve current exe: {error}"))?;
     let current_dir = current
@@ -321,17 +345,7 @@ fn apply_portable_replace(app: &AppHandle, staged_exe: &Path, latest: &str) -> a
         .to_path_buf();
     let old_path = sibling_with_suffix(&current, ".old");
 
-    // Best effort: rename running image so the path is free for the new file.
-    if old_path.exists() {
-        let _ = fs::remove_file(&old_path);
-    }
-    fs::rename(&current, &old_path)
-        .map_err(|error| anyhow::anyhow!("Cannot free current exe path for replace: {error}"))?;
-
-    if let Err(error) = fs::copy(staged_exe, &current) {
-        let _ = fs::rename(&old_path, &current);
-        return Err(anyhow::anyhow!("Failed to place new exe: {error}"));
-    }
+    replace_portable_file(staged_exe, &current, &old_path, expected)?;
 
     // Remove staging immediately so no leftover download folders remain.
     if let Some(parent) = staged_exe.parent() {
@@ -353,7 +367,7 @@ fn apply_portable_replace(app: &AppHandle, staged_exe: &Path, latest: &str) -> a
     {
         if let Err(error) = spawn_cleanup_helper(&current_dir, &current, &old_path, pid) {
             // New exe is already in place — try a direct relaunch fallback.
-            let _ = std::process::Command::new(&current)
+            let _ = crate::process::command(&current)
                 .current_dir(&current_dir)
                 .spawn();
             app.exit(0);
@@ -387,9 +401,6 @@ fn spawn_cleanup_helper(
     pid: u32,
 ) -> anyhow::Result<()> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use std::os::windows::process::CommandExt;
-
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     fn ps_literal(path: &Path) -> String {
         path.to_string_lossy().replace('\'', "''")
@@ -417,15 +428,17 @@ Start-Process -FilePath '{new_exe_s}' -WorkingDirectory '{cwd_s}'"
             .collect::<Vec<u8>>(),
     );
 
-    std::process::Command::new("powershell")
+    crate::process::command("powershell")
         .args([
             "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-ExecutionPolicy",
             "Bypass",
             "-EncodedCommand",
             &encoded,
         ])
-        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(|error| anyhow::anyhow!("Failed to spawn updater helper: {error}"))?;
     Ok(())
@@ -576,6 +589,25 @@ fn emit_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn incomplete_or_changed_replacement_preserves_the_current_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = dir.path().join("music-island.exe");
+        let staged = dir.path().join("download.exe");
+        let old = sibling_with_suffix(&current, ".old");
+        fs::write(&current, b"working executable").unwrap();
+        fs::write(&staged, b"incomplete download").unwrap();
+        let expected = Sha256::digest(b"complete new executable").into();
+        assert!(replace_portable_file(&staged, &current, &old, &expected).is_err());
+        assert_eq!(fs::read(&current).unwrap(), b"working executable");
+        assert!(!old.exists());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+        fs::write(&staged, b"complete new executable").unwrap();
+        replace_portable_file(&staged, &current, &old, &expected).unwrap();
+        assert_eq!(fs::read(&current).unwrap(), b"complete new executable");
+        assert_eq!(fs::read(&old).unwrap(), b"working executable");
+    }
 
     fn asset(name: &str) -> GhAsset {
         GhAsset {

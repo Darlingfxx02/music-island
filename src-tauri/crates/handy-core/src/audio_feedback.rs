@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 pub enum SoundType {
     Start,
